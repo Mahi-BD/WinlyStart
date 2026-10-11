@@ -13,3 +13,6 @@ publish/
 Repo/Temp/*
 !Repo/Temp/.gitkeep
 dist/
+
+# Subversion working-copy metadata (mirror at rbd.svn.bd)
+.svn/

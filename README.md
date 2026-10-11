@@ -130,6 +130,9 @@ Developer notes, architecture and the project rules are in
 * Pin to taskbar and jump lists are not available (no public API).
 * While an **elevated** window has focus, the Windows key is handled by the fallback path
   (brief flicker of the Windows 11 menu). Winly Start deliberately does not run elevated.
+* In a **full-screen Remote Desktop or virtual-machine session** the Windows key, Ctrl+Esc and the
+  Start button belong to the remote machine, exactly as they do without Winly Start — its Start menu
+  opens, the local one stays out of the way. In a windowed session they open Winly Start.
 
 ## Code signing
 
@@ -155,3 +158,16 @@ harm the operating system.
 
 [MIT](LICENSE). Windows, Windows 10 and Windows 11 are trademarks of Microsoft Corporation;
 Winly Start is an independent project and is not affiliated with Microsoft.
+
+<!-- SVN-REPOSITORY-NOTE -->
+## Source control (SVN)
+
+This folder is an SVN working copy of **https://rbd.svn.bd/svn/WinlyStart** (SVN user: `mahi`).
+
+**Next time: after making changes, upload (commit) them to this repository:**
+
+```bash
+svn status                         # review changes first
+svn add --force . --depth infinity # add new files (skip bin/, obj/, node_modules/, published/, secrets, databases)
+svn commit -m "describe the change"
+```

@@ -41,10 +41,30 @@ GitHub: https://github.com/Mahi-BD/WinlyStart  ·  Local: `/home/mahi/Project/Wi
 ## How the "replacement" works (no OS harm)
 | Trigger | Mechanism | Notes |
 |---|---|---|
-| **Windows key** tap | `WH_KEYBOARD_LL` hook (`Core/StartHook.cs`). On Win-down we let the key through **and** inject a harmless unassigned virtual key (0xE8) so Windows sees a "combo" and never opens its own Start. On Win-up with no other key pressed → toggle Winly Start. | All Win+X combos keep working natively. Same trick AutoHotkey users have relied on for years. |
+| **Windows key** tap | `WH_KEYBOARD_LL` hook (`Core/StartHook.cs`). Win-down passes through. A lone Win-up is swallowed and re-emitted as a chord — a tagged `VK_CONTROL` tap, then the Win-up — so the shell sees "Win + something" and never opens its own Start; then Winly Start toggles. | All Win+X combos keep working natively (they set `_otherKey` and pass untouched). Auto-repeat while Win is held is one press; a Win-down after >1.2 s of silence is a new press (the key-up was missed behind an elevated window). |
 | **Ctrl+Esc** | Same hook; swallowed and toggles Winly Start. | |
-| **Start button click** | `WH_MOUSE_LL` hook. If a left-click lands inside the Start button rectangle (found through UI Automation, `AutomationId = "StartButton"` inside `Shell_TrayWnd`, cached and refreshed periodically) it is swallowed and Winly Start toggles. | Right-click (Win+X menu) passes through. Works with left- and centre-aligned taskbars. |
+| **Start button click** | `WH_MOUSE_LL` hook. If a left-click lands inside the Start button rectangle (found through UI Automation, `AutomationId = "StartButton"` inside `Shell_TrayWnd`, cached 2 s, refreshed on every foreground change and on a near miss) it is swallowed and Winly Start toggles. | Right-click (Win+X menu) passes through. Works with left- and centre-aligned taskbars. Ignored while a **full-screen** window of another process is in the foreground (RDP, a game, a video): it covers the taskbar, so the click is its, not the Start button's. A *maximised* window does not count (`IsZoomed`) — with an auto-hiding taskbar it also spans the monitor. |
+| **Click outside the menu** | Same mouse hook. Any button down while the menu is open at a point outside every visible window of the UI thread (`EnumThreadWindows`: the menu, its context menus, flyouts, tooltips, dialogs) → `Dismiss`. The click itself passes through. | Light dismiss no longer depends on `Window.Deactivated`, which never fires for clicks on the taskbar, the desktop or a no-activate window. `Deactivated` stays as the keyboard path (Alt+Tab). |
 | **Anything we missed** (touch gesture, Win key while an elevated window is focused) | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. When the foreground window belongs to `StartMenuExperienceHost.exe`, Winly Start shows itself and takes focus; the Windows 11 menu light-dismisses. | Slight flicker in this rare path only. |
+
+**Full-screen remote sessions stay remote.** When the foreground window is full-screen *and* is a
+remote-control / VM client (class `TscShellContainerClass` = mstsc, or an exe named mstsc, msrdc,
+RdClient, vmconnect, WindowsSandbox, VirtualBox, vmware, wfica, CDViewer, AnyDesk, TeamViewer, RustDesk,
+RDesk, Parsec, Moonlight — `StartHook.RemoteClients`), the Windows key and Ctrl+Esc pass straight
+through: the client forwards them to the far machine, whose own Start menu opens, exactly as without
+Winly Start. In a *windowed* session the key is local and opens Winly Start, matching mstsc's default
+"Apply Windows key combinations: only when using the full screen". Decided on the Win-*down*
+(`_passThrough`) so the matching Win-up is consistent.
+
+**The hooks run on their own thread** (`WinlyStart.Hooks`, a plain `GetMessage` loop). Windows calls a
+low-level hook on the thread that installed it and allows it only a few hundred milliseconds;
+installed from the UI thread (as before 1.5.2) a busy layout pass or a synchronous app launch missed
+that deadline, the key fell through to the Windows 11 menu, and — per the `LowLevelKeyboardProc`
+docs — after repeated misses Windows **silently removes the hook** with no notification. Hook
+callbacks only marshal to the UI thread (`Dispatcher.BeginInvoke`); nothing in them sends a window
+message. A **watchdog** (3 s timer) compares `GetLastInputInfo` with the last hook callback: input
+flowing for >2 s with silent hooks means they are gone, and they are re-installed (rate-limited to once
+per 30 s, because input aimed at an *elevated* window is legitimately invisible to us).
 
 Limitation: low-level hooks cannot see input while an **elevated** window is focused (UIPI).
 In that case the fallback row above kicks in. This is by design — we do not run elevated.
@@ -308,6 +328,39 @@ Tenth round — v1.5.1 (verified live):
   centre.
   Verified all three directions: up into an earlier group, down into a later one, and into an **empty**
   group (the case that stayed broken after the first fix).
+
+Eleventh round — v1.5.2 (2026-10-11, smoothness / "menu sometimes misbehaves" report):
+User report: the menu sometimes did not close on an outside click, sometimes the *Windows 11* menu
+opened instead, the menu sometimes froze after clicking an icon, and in a full-screen Remote Desktop
+session the Windows key opened both the remote Start menu and ours. Root causes and fixes:
+- ⚠️ **Hooks were on the UI thread.** Every key/mouse event was delivered to the UI thread; while it was
+  busy the hook timed out → the event passed through → the Windows 11 menu opened; repeated timeouts
+  make Windows drop the hook silently → the original menu then opened *every* time until restart.
+  Hooks now live on a dedicated thread (`StartHook.HookThread`) with a watchdog (see the table above).
+- ⚠️ **Launching was synchronous on the UI thread.** `LaunchApp` started the 110 ms fade and then called
+  `Process.Start` / `IApplicationActivationManager` right there; packaged-app activation can block for
+  seconds, so the half-faded menu froze (the "stuck form") and the hooks starved at the same moment.
+  Everything that leaves the process now goes through `StartMenuWindow.Open(Action)` = hide, then run on
+  the pool (`RunAsAdmin`, `OpenFileLocation`, folders, power actions, `shutdown.exe`'s 5 s wait included).
+  Built-in items (`builtin:calendar`) stay on the UI thread. The usage counter is saved with
+  `Store.SaveAsync` (serialise now, write on the pool; unique temp file per thread because the rescan
+  thread saves the same file).
+- **Light dismiss from the mouse hook** (table above) instead of relying on `Window.Deactivated`.
+  `ToggleMenu` ignores a toggle within 300 ms of a hook dismiss: the tray-icon click that dismissed the
+  menu also arrives as a toggle and used to reopen it.
+- **Hide can no longer wedge.** `FinishHide` is idempotent and a 400 ms `_hideGuard` timer runs it if the
+  fade's `Completed` never arrives (animation replaced / dispatcher starved). `CancelDrag()` on hide
+  releases a tile or group header still pressed (Win key mid-drag left the tile shrunk with the
+  capture). Housekeeping after a hide (`ResetTransient`, working-set trim) is deferred to
+  `ContextIdle` — the user has just launched something, the system is busy bringing it up.
+- **Remote Desktop:** full-screen remote clients own the Windows key (section above); a click where the
+  *remote* Start button lands no longer opens the local menu (full-screen foreground check).
+- `AttachThreadInput` is skipped when the foreground window `IsHungAppWindow` (joining a hung thread's
+  input queue hangs us with it). The account display name (`GetUserNameExW(NameDisplay)`, a domain
+  round-trip on AD machines) is resolved off the UI thread and cached. `Prewarm()` shows the window once
+  at opacity 0 at startup so the first real open does not pay for layout/font/composition setup.
+  `TaskbarInfo` boxes the cached Start-button rect so the hook thread never reads a torn struct.
+- Version **1.5.2** (csproj, manifest, installer, MSIX manifest, CI). Not yet verified live on Windows.
 
 Microsoft Store submission (2026-09-09):
 - Product **Winly Start** reserved in Partner Center as an **EXE or MSI app** (unpackaged Win32).

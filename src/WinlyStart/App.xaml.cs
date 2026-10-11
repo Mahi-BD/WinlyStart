@@ -43,9 +43,11 @@ public partial class App : Application
         _hook = new StartHook();
         _hook.Toggle += () => _menu.ToggleMenu();
         _hook.Show += () => _menu.ShowMenu();
+        _hook.Dismiss += () => _menu.Dismiss();
         ApplyHookSettings();
         _hook.Install();
         TaskbarInfo.RefreshStartButtonAsync();
+        _menu.Prewarm();
 
         _tray = new TrayIcon("Winly Start");
         _tray.LeftClick += () => _menu.ToggleMenu();

@@ -126,6 +126,19 @@ internal static partial class Native
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam, lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LASTINPUTINFO { public uint cbSize, dwTime; }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct ACCENT_POLICY
     {
         public int AccentState, AccentFlags;
@@ -145,8 +158,9 @@ internal static partial class Native
 
     public const int WH_KEYBOARD_LL = 13, WH_MOUSE_LL = 14;
     public const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105;
-    public const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
-    public const int WM_APP = 0x8000;
+    public const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_RBUTTONDOWN = 0x0204, WM_RBUTTONUP = 0x0205;
+    public const int WM_MBUTTONDOWN = 0x0207, WM_XBUTTONDOWN = 0x020B;
+    public const int WM_QUIT = 0x0012, WM_APP = 0x8000;
     public const uint LLKHF_INJECTED = 0x10;
     public const uint LLMHF_INJECTED = 0x01;
     public const int VK_LWIN = 0x5B, VK_RWIN = 0x5C, VK_ESCAPE = 0x1B, VK_CONTROL = 0x11, VK_MENU = 0x12;
@@ -175,6 +189,7 @@ internal static partial class Native
 
     public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
     public delegate void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
+    public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
     // ───────────────────────── user32 ─────────────────────────
 
@@ -206,7 +221,16 @@ internal static partial class Native
     [DllImport("user32.dll")] public static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
     [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsHungAppWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
+    [DllImport("user32.dll")] public static extern bool EnumThreadWindows(uint dwThreadId, EnumWindowsProc lpfn, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+    // message loop for the dedicated hook thread
+    [DllImport("user32.dll")] public static extern int GetMessageW(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+    [DllImport("user32.dll")] public static extern bool TranslateMessage(ref MSG lpMsg);
+    [DllImport("user32.dll")] public static extern IntPtr DispatchMessageW(ref MSG lpMsg);
+    [DllImport("user32.dll")] public static extern bool PostThreadMessageW(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
     // ───────────────────────── kernel32 ─────────────────────────
 
@@ -323,6 +347,9 @@ internal static partial class Native
         var fg = GetForegroundWindow();
         var fgThread = GetWindowThreadProcessId(fg, out _);
         var me = GetCurrentThreadId();
+        // AttachThreadInput joins our input queue to the foreground thread's; if that thread is hung
+        // the join blocks us with it, so never attach to a window that has stopped responding.
+        if (fgThread != me && fgThread != 0 && IsHungAppWindow(fg)) fgThread = 0;
         if (fgThread != me && fgThread != 0) AttachThreadInput(fgThread, me, true);
         try
         {

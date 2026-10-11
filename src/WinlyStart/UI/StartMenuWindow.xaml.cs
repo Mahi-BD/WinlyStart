@@ -20,12 +20,14 @@ public partial class StartMenuWindow : Window
     private readonly ObservableCollection<TileGroupVm> _groups = new();
     private readonly IntPtr _hwnd;
     private bool _recentExpanded, _tilesLoaded, _visible, _closing;
-    private long _shownAt;
+    private long _shownAt, _dismissedAt;
     private string? _filter;
 
     // live tiles: one 1 s clock while the menu is visible (stopped when hidden — zero cost otherwise)
     private readonly DispatcherTimer _liveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private int _liveTick;
+    // finishes a hide by hand if the fade's Completed callback never arrives (see HideMenu)
+    private readonly DispatcherTimer _hideGuard = new() { Interval = TimeSpan.FromMilliseconds(400) };
 
     // tile drag state
     private TileVm? _dragTile;
@@ -48,16 +50,36 @@ public partial class StartMenuWindow : Window
         App.Catalog.Changed += OnCatalogChanged;
         Theme.Current.Changed += ApplyBackdrop;
         _liveTimer.Tick += (_, _) => LiveTick();
+        _hideGuard.Tick += (_, _) => FinishHide();
         ApplyBackdrop();
         BuildRail();
         ApplySettings();
     }
 
+    /// <summary>Renders the window once, invisibly (Root starts at opacity 0), so the first real open
+    /// does not pay for the initial layout, font loading and composition-surface setup.</summary>
+    public void Prewarm()
+    {
+        if (_visible || IsVisible) return;
+        ShowActivated = false;
+        Show();
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            if (!_visible) Hide();
+            ShowActivated = true;
+        }));
+    }
+
     /// <summary>Fills the rail's user button from the chosen (or Windows) account picture.</summary>
     private void LoadUserPicture()
     {
-        UserNameText.Text = UserInfo.DisplayName;
-        UserButton.ToolTip = UserNameText.Text;
+        // The display name can need a domain round-trip the first time; never wait for it here.
+        UserNameText.Text = UserButton.ToolTip as string ?? Environment.UserName;
+        _ = Task.Run(() => UserInfo.DisplayName).ContinueWith(t => Dispatcher.BeginInvoke(() =>
+        {
+            UserNameText.Text = t.Result;
+            UserButton.ToolTip = t.Result;
+        }), TaskContinuationOptions.OnlyOnRanToCompletion);
         UserPicture.Visibility = Visibility.Collapsed;
         UserGlyph.Visibility = Visibility.Visible;
         if (UserInfo.PicturePath is not { } pic) return;
@@ -81,17 +103,32 @@ public partial class StartMenuWindow : Window
 
     public void ToggleMenu()
     {
+        // The click that just light-dismissed the menu may also be a toggle (the tray icon, the Start
+        // button of another taskbar): it closed the menu, it must not reopen it.
+        if (_closing && Environment.TickCount64 - _dismissedAt < 300) return;
         if (_visible && !_closing) HideMenu(); else ShowMenu();
+    }
+
+    /// <summary>Light dismiss from the mouse hook: a button went down outside every window of ours.</summary>
+    public void Dismiss()
+    {
+        if (!_visible || _closing) return;
+        _dismissedAt = Environment.TickCount64;
+        StartHook.Debug("dismiss (click outside)");
+        HideMenu();
     }
 
     public void ShowMenu()
     {
         bool wasClosing = _closing;
         _closing = false;
+        _hideGuard.Stop();
         _shownAt = Environment.TickCount64;
+        StartHook.MenuVisible = true;
         if (!_visible)
         {
             _visible = true;
+            ShowActivated = true;
             Position();
             Show();
             Animate(0, 1, 24, 0, 200);
@@ -110,18 +147,62 @@ public partial class StartMenuWindow : Window
     {
         if (!_visible || _closing) return;
         _closing = true;
+        StartHook.MenuVisible = false;
         PowerFlyout.IsOpen = UserFlyout.IsOpen = false;
-        Animate(1, 0, 0, 8, 110, () =>
+        CancelDrag();
+        Animate(1, 0, 0, 8, 110, FinishHide);
+        // Insurance: if the fade's Completed never fires (animation replaced, dispatcher starved) the
+        // window would sit half-faded for good — the "stuck menu". Finish by hand a little later.
+        _hideGuard.Start();
+    }
+
+    private void FinishHide()
+    {
+        _hideGuard.Stop();
+        if (!_closing) return;                 // reopened during the fade
+        _closing = false;
+        _visible = false;
+        _liveTimer.Stop();
+        Hide();
+        // Housekeeping runs once the dispatcher is idle, not in the same instant as the hide: the user
+        // has usually just launched something and the system is busy bringing that app up.
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
-            if (!_closing) return;                 // reopened during the fade
-            _closing = false;
-            _visible = false;
-            _liveTimer.Stop();
-            Hide();
+            if (_visible) return;
             ResetTransient();
             if (App.Settings.TrimMemoryWhenHidden)
                 Native.SetProcessWorkingSetSize(Native.GetCurrentProcess(), new IntPtr(-1), new IntPtr(-1));
-        });
+        }));
+    }
+
+    /// <summary>A tile or group header pressed when the menu hides (Win key mid-drag) would otherwise keep
+    /// the mouse capture and its pressed/lifted look until the next click on it.</summary>
+    private void CancelDrag()
+    {
+        if (_dragBorder is { } b)
+        {
+            Scale(b).ScaleX = Scale(b).ScaleY = 1;
+            var tt = Translate(b); tt.X = 0; tt.Y = 0;
+            if (_dragTile is { } t && _dragging)
+            {
+                t.IsDragging = false;
+                t.Col = _dragOrigCol; t.Row = _dragOrigRow;
+                AnimatedPack(t.Group);
+            }
+        }
+        _dragBorder = null; _dragTile = null; _dragHost = null; _dragging = false;
+        _headerPress = null; _headerDragging = false;
+        GroupInsertLine.Visibility = Visibility.Collapsed;
+        Mouse.Capture(null);
+    }
+
+    /// <summary>Hide the menu and run something that leaves the process (launch, open a folder, power
+    /// action) on the pool. ShellExecute and packaged-app activation can block for seconds; on the UI
+    /// thread that froze the half-faded menu and starved the hooks.</summary>
+    private void Open(Action a)
+    {
+        HideMenu();
+        _ = Task.Run(() => { try { a(); } catch (Exception ex) { App.Log(ex); } });
     }
 
     private void Animate(double fromOpacity, double toOpacity, double fromY, double toY, int ms, Action? done = null)
@@ -318,9 +399,10 @@ public partial class StartMenuWindow : Window
 
     private void LaunchApp(AppEntry app)
     {
-        HideMenu();
-        Launcher.Launch(app);
         App.Catalog.RecordLaunch(app);
+        // built-in items open one of our own windows → must stay on the UI thread
+        if (app.Id.StartsWith("builtin:", StringComparison.Ordinal)) { HideMenu(); Launcher.Launch(app); return; }
+        Open(() => Launcher.Launch(app));
     }
 
     private void AddTile(AppEntry app)
@@ -447,9 +529,9 @@ public partial class StartMenuWindow : Window
         RebuildRows();
     }
 
-    private void RunAsAdmin_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) { HideMenu(); Launcher.RunAsAdmin(r.App); } }
-    private void OpenLocation_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) { HideMenu(); Launcher.OpenFileLocation(r.App); } }
-    private void Uninstall_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) { HideMenu(); Launcher.Uninstall(r.App); } }
+    private void RunAsAdmin_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) Open(() => Launcher.RunAsAdmin(r.App)); }
+    private void OpenLocation_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) Open(() => Launcher.OpenFileLocation(r.App)); }
+    private void Uninstall_Click(object sender, RoutedEventArgs e) { if (Ctx<AppRow>(sender) is { } r) Open(() => Launcher.Uninstall(r.App)); }
 
     // ───────────────────────── alphabet jump grid ─────────────────────────
 
@@ -720,9 +802,9 @@ public partial class StartMenuWindow : Window
         SaveTiles();
     }
 
-    private void TileRunAsAdmin_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) { HideMenu(); Launcher.RunAsAdmin(t.App); } }
-    private void TileOpenLocation_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) { HideMenu(); Launcher.OpenFileLocation(t.App); } }
-    private void TileUninstall_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) { HideMenu(); Launcher.Uninstall(t.App); } }
+    private void TileRunAsAdmin_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) Open(() => Launcher.RunAsAdmin(t.App)); }
+    private void TileOpenLocation_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) Open(() => Launcher.OpenFileLocation(t.App)); }
+    private void TileUninstall_Click(object sender, RoutedEventArgs e) { if (Ctx<TileVm>(sender) is { } t) Open(() => Launcher.Uninstall(t.App)); }
 
     private void GroupName_LostFocus(object sender, RoutedEventArgs e)
     {
@@ -943,7 +1025,6 @@ public partial class StartMenuWindow : Window
         {
             if (on) items.Add(new RailItemVm { Glyph = glyph, Tooltip = tip, Invoke = act });
         }
-        void Open(Action a) { HideMenu(); a(); }
 
         Add(r.Documents, "", "Documents", () => Open(Launcher.OpenDocuments));
         Add(r.Downloads, "", "Downloads", () => Open(Launcher.OpenDownloads));
@@ -976,16 +1057,16 @@ public partial class StartMenuWindow : Window
         RailFlyout.Visibility = RailFlyout.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     private void User_Click(object sender, RoutedEventArgs e) => UserFlyout.IsOpen = true;
     private void Power_Click(object sender, RoutedEventArgs e) => PowerFlyout.IsOpen = true;
-    private void Documents_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.OpenDocuments(); }
-    private void Pictures_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.OpenPictures(); }
-    private void Settings_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.OpenSettings(); }
+    private void Documents_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenDocuments);
+    private void Pictures_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenPictures);
+    private void Settings_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenSettings);
 
-    private void Sleep_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.Sleep(); }
-    private void ShutDown_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.ShutDown(); }
-    private void Restart_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.Restart(); }
-    private void AccountSettings_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.OpenAccountSettings(); }
-    private void Lock_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.Lock(); }
-    private void SignOut_Click(object sender, RoutedEventArgs e) { HideMenu(); Launcher.SignOut(); }
+    private void Sleep_Click(object sender, RoutedEventArgs e) => Open(Launcher.Sleep);
+    private void ShutDown_Click(object sender, RoutedEventArgs e) => Open(Launcher.ShutDown);
+    private void Restart_Click(object sender, RoutedEventArgs e) => Open(Launcher.Restart);
+    private void AccountSettings_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenAccountSettings);
+    private void Lock_Click(object sender, RoutedEventArgs e) => Open(Launcher.Lock);
+    private void SignOut_Click(object sender, RoutedEventArgs e) => Open(Launcher.SignOut);
 
     // ───────────────────────── live tiles ─────────────────────────
 

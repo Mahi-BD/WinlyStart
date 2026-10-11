@@ -99,18 +99,23 @@ public static class Launcher
 /// <summary>Current user's display name and account picture (for the left rail).</summary>
 public static class UserInfo
 {
+    private static string? _displayName;
+
+    /// <summary>The account's display name. On a domain-joined PC the first lookup can go to the
+    /// network and take seconds, so callers resolve it off the UI thread; afterwards it is cached.</summary>
     public static string DisplayName
     {
         get
         {
+            if (_displayName != null) return _displayName;
             try
             {
                 var sb = new StringBuilder(256);
                 uint size = (uint)sb.Capacity;
-                if (Native.GetUserNameExW(Native.NameDisplay, sb, ref size) != 0 && sb.Length > 0) return sb.ToString();
+                if (Native.GetUserNameExW(Native.NameDisplay, sb, ref size) != 0 && sb.Length > 0) return _displayName = sb.ToString();
             }
             catch { }
-            return Environment.UserName;
+            return _displayName = Environment.UserName;
         }
     }
 

@@ -152,13 +152,27 @@ public static class Store
 
     public static void Save<T>(string file, T value, JsonTypeInfo<T> type)
     {
-        try
-        {
-            Directory.CreateDirectory(Dir);
-            var path = Path.Combine(Dir, file);
-            File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(value, type));
-            File.Move(path + ".tmp", path, overwrite: true);
-        }
+        try { Write(file, JsonSerializer.Serialize(value, type)); }
         catch { /* disk full / locked — keep running with in-memory state */ }
+    }
+
+    /// <summary>Serialises now (the object is only safe to read on the calling thread) and writes the
+    /// file on the pool, so a save in a click handler never stalls the UI thread on the disk.</summary>
+    public static void SaveAsync<T>(string file, T value, JsonTypeInfo<T> type)
+    {
+        string json;
+        try { json = JsonSerializer.Serialize(value, type); }
+        catch { return; }
+        _ = Task.Run(() => { try { Write(file, json); } catch { } });
+    }
+
+    private static void Write(string file, string json)
+    {
+        Directory.CreateDirectory(Dir);
+        var path = Path.Combine(Dir, file);
+        // a unique temp name: two threads may save the same file at once (launch counter vs. rescan)
+        var tmp = path + "." + Environment.CurrentManagedThreadId + ".tmp";
+        File.WriteAllText(tmp, json);
+        File.Move(tmp, path, overwrite: true);
     }
 }

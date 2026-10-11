@@ -12,7 +12,9 @@ internal static partial class Native
 /// <summary>Where the taskbar is, where the Start button is, and how big a pixel is.</summary>
 internal static class TaskbarInfo
 {
-    private static Native.RECT? _startButton;
+    // boxed so the hook thread never sees a half-written rectangle while the pool thread updates it
+    private sealed record Box(Native.RECT R);
+    private static Box? _startButton;
     private static long _startButtonStamp;
     private static int _refreshing;
 
@@ -46,7 +48,7 @@ internal static class TaskbarInfo
         {
             // the taskbar re-centres whenever an app opens or closes, so keep this fresh
             if (Environment.TickCount64 - _startButtonStamp > 2_000) RefreshStartButtonAsync();
-            return _startButton;
+            return _startButton?.R;
         }
     }
 
@@ -58,10 +60,11 @@ internal static class TaskbarInfo
         {
             try
             {
-                _startButton = FindStartButton();
+                var found = FindStartButton();
+                _startButton = found is { } r ? new Box(r) : null;
                 _startButtonStamp = Environment.TickCount64;
                 if (StartHook.DebugEnabled)
-                    StartHook.Debug($"StartButton refresh → {(_startButton is { } r ? $"{r.Left},{r.Top} {r.Width}x{r.Height}" : "null")}");
+                    StartHook.Debug($"StartButton refresh → {(found is { } f ? $"{f.Left},{f.Top} {f.Width}x{f.Height}" : "null")}");
             }
             finally { Interlocked.Exchange(ref _refreshing, 0); }
         });

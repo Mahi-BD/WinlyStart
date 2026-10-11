@@ -127,7 +127,7 @@ public sealed class AppCatalog
     {
         app.Launches++;
         Usage.Launches[app.Id] = app.Launches;
-        Store.Save("usage.json", Usage, JsonCtx.Default.UsageData);
+        Store.SaveAsync("usage.json", Usage, JsonCtx.Default.UsageData);   // called mid-launch; keep the UI thread free
     }
 
     /// <summary>Adds a user item (exe / file / website) and rescans so it appears everywhere.</summary>
