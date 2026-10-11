@@ -31,6 +31,7 @@ public partial class StartMenuWindow : Window
     // One more try at the foreground shortly after an open that did not get it (the fallback path: the
     // Windows menu still held the focus while we showed; by now it has closed and the grab succeeds).
     private readonly DispatcherTimer _fgRetry = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private int _fgTries;
 
     // tile drag state
     private TileVm? _dragTile;
@@ -56,12 +57,14 @@ public partial class StartMenuWindow : Window
         _hideGuard.Tick += (_, _) => FinishHide();
         _fgRetry.Tick += (_, _) =>
         {
-            _fgRetry.Stop();
-            if (!_visible || _closing) return;
+            if (!_visible || _closing) { _fgRetry.Stop(); return; }
+            bool windowsMenu = StartHook.NativeMenuOpen;
+            if (windowsMenu) StartHook.CloseNativeMenu();      // still up: Escape it again
             Native.ForceForeground(_hwnd);
             bool ok = Native.GetForegroundWindow() == _hwnd;
             if (ok) { Activate(); AppList.Focus(); }
-            StartHook.Debug($"foreground retry → {ok}");
+            StartHook.Debug($"foreground retry {_fgTries + 1} → fg={ok} windowsMenu={(windowsMenu ? "open" : "closed")}");
+            if ((ok && !windowsMenu) || ++_fgTries >= 6) _fgRetry.Stop();
         };
         ApplyBackdrop();
         BuildRail();
@@ -153,7 +156,8 @@ public partial class StartMenuWindow : Window
         Activate();
         AppList.Focus();
         bool fg = Native.GetForegroundWindow() == _hwnd;
-        if (!fg) _fgRetry.Start();
+        _fgTries = 0;
+        if (!fg || StartHook.NativeMenuOpen) _fgRetry.Start();
         StartHook.Debug($"ShowMenu visible={_visible} fg-after={fg}");
     }
 
@@ -318,6 +322,21 @@ public partial class StartMenuWindow : Window
         Width = WidthForColumns(s.TileColumns);
         foreach (var g in _groups) { g.Columns = s.TileColumns; g.Pack(); }
         BuildRail();
+        // quick power buttons under the hamburger; Sleep / Hibernate stay visible but disabled (dimmed,
+        // tooltip says why) where this PC does not support them — a vanished button looks like a bug
+        QuickPower.Visibility = QuickPowerFlyout.Visibility = s.Rail.QuickPower ? Visibility.Visible : Visibility.Collapsed;
+        PowerAvailability(SleepButton, SleepFlyoutButton, Native.IsPwrSuspendAllowed(), "Sleep", "Sleep is not available on this PC");
+        PowerAvailability(HibernateButton, HibernateFlyoutButton, Native.IsPwrHibernateAllowed(), "Hibernate", "Hibernation is turned off on this PC (powercfg /h on)");
+        static void PowerAvailability(Button rail, Button flyout, bool ok, string tip, string offTip)
+        {
+            foreach (var b in new[] { rail, flyout })
+            {
+                b.IsEnabled = ok;
+                b.Opacity = ok ? 1 : 0.4;
+                b.ToolTip = ok ? tip : offTip;
+                ToolTipService.SetShowOnDisabled(b, true);
+            }
+        }
         LoadUserPicture();
         RebuildRows();
     }
@@ -1099,6 +1118,7 @@ public partial class StartMenuWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenSettings);
 
     private void Sleep_Click(object sender, RoutedEventArgs e) => Open(Launcher.Sleep);
+    private void Hibernate_Click(object sender, RoutedEventArgs e) => Open(Launcher.Hibernate);
     private void ShutDown_Click(object sender, RoutedEventArgs e) => Open(Launcher.ShutDown);
     private void Restart_Click(object sender, RoutedEventArgs e) => Open(Launcher.Restart);
     private void AccountSettings_Click(object sender, RoutedEventArgs e) => Open(Launcher.OpenAccountSettings);

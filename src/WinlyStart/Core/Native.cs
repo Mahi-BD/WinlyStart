@@ -257,6 +257,12 @@ internal static partial class Native
     [DllImport("gdi32.dll")] public static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint cLines, byte[] lpvBits, ref BITMAPINFOHEADER lpbmi, uint usage);
 
     [DllImport("powrprof.dll")] public static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
+    [DllImport("powrprof.dll")] [return: MarshalAs(UnmanagedType.U1)] public static extern bool IsPwrHibernateAllowed();
+    [DllImport("powrprof.dll")] [return: MarshalAs(UnmanagedType.U1)] public static extern bool IsPwrSuspendAllowed();
+
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+    /// <summary>DWMWA_CLOAKED: a UWP CoreWindow that is "closed" stays IsWindowVisible but is cloaked.</summary>
+    public static bool IsCloaked(IntPtr hwnd) => DwmGetWindowAttribute(hwnd, 14, out int v, sizeof(int)) == 0 && v != 0;
 
     [DllImport("secur32.dll", CharSet = CharSet.Unicode)] public static extern byte GetUserNameExW(int nameFormat, StringBuilder userName, ref uint userNameSize);
 

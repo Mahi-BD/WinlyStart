@@ -21,6 +21,7 @@ public partial class SettingsWindow : Window
         var s = App.Settings;
         WinKey.IsChecked = s.ReplaceWinKey;
         StartButton.IsChecked = s.ReplaceStartButton;
+        SuppressMenu.IsChecked = s.SuppressWindowsMenu;
         Autostart.IsChecked = s.StartWithWindows;
         if (Packaged.Is)
         {
@@ -37,7 +38,7 @@ public partial class SettingsWindow : Window
         // here that only changes something else: remember what the controls show and write back on change.
         while (ColumnsBox.Items.Count > 2) ColumnsBox.Items.RemoveAt(2);
         if (s.TileColumns is not (6 or 8))
-            ColumnsBox.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"Custom — {s.TileColumns} units (set by dragging the menu)" });
+            ColumnsBox.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"Custom — {s.TileColumns} units (dragged)" });
         ColumnsBox.SelectedIndex = _loadedColsIndex = s.TileColumns == 8 ? 1 : s.TileColumns == 6 ? 0 : 2;
         HeightSlider.Value = s.MenuHeight;
         _loadedHeight = (int)HeightSlider.Value;     // after the slider's tick snapping
@@ -57,6 +58,7 @@ public partial class SettingsWindow : Window
         RailExplorer.IsChecked = r.FileExplorer;
         RailSettings.IsChecked = r.Settings;
         RailCalendar.IsChecked = r.Calendar;
+        RailQuickPower.IsChecked = r.QuickPower;
 
         _profilePath = s.ProfileImagePath;
         ShowProfile();
@@ -163,6 +165,7 @@ public partial class SettingsWindow : Window
         var s = App.Settings;
         s.ReplaceWinKey = WinKey.IsChecked == true;
         s.ReplaceStartButton = StartButton.IsChecked == true;
+        s.SuppressWindowsMenu = SuppressMenu.IsChecked == true;
         s.StartWithWindows = Autostart.IsChecked == true;
         s.Theme = (ThemeMode)Math.Max(0, ThemeBox.SelectedIndex);
         if (ColumnsBox.SelectedIndex != _loadedColsIndex && ColumnsBox.SelectedIndex is 0 or 1) s.TileColumns = ColumnsBox.SelectedIndex == 1 ? 8 : 6;
@@ -183,6 +186,7 @@ public partial class SettingsWindow : Window
         r.FileExplorer = RailExplorer.IsChecked == true;
         r.Settings = RailSettings.IsChecked == true;
         r.Calendar = RailCalendar.IsChecked == true;
+        r.QuickPower = RailQuickPower.IsChecked == true;
         s.ProfileImagePath = _profilePath;
 
         App.ApplySettings();

@@ -13,6 +13,9 @@ public sealed class Settings
 {
     public bool ReplaceWinKey { get; set; } = true;
     public bool ReplaceStartButton { get; set; } = true;
+    /// <summary>Close the Windows 11 Start menu whenever it still appears (touch, elevated window focused,
+    /// a hook Windows dropped) and open Winly Start instead. The "fallback" in StartHook.</summary>
+    public bool SuppressWindowsMenu { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public ThemeMode Theme { get; set; } = ThemeMode.Auto;
     /// <summary>Tile units per group row (each medium tile is 2 units). 6 = three medium tiles wide.
@@ -48,6 +51,8 @@ public sealed class RailSettings
     public bool Settings { get; set; } = true;
     /// <summary>Shows a calendar button in the rail that opens a calendar window.</summary>
     public bool Calendar { get; set; }
+    /// <summary>Sleep / Shut down / Hibernate buttons at the top of the rail, under the hamburger.</summary>
+    public bool QuickPower { get; set; } = true;
 }
 
 /// <summary>A user-added target: an .exe, a shortcut, any file, or a website.</summary>

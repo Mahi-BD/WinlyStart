@@ -95,7 +95,7 @@ public partial class App : Application
         if (_hook == null) return;
         _hook.WinKeyEnabled = Settings.ReplaceWinKey;
         _hook.StartButtonEnabled = Settings.ReplaceStartButton;
-        _hook.FallbackEnabled = Settings.ReplaceWinKey || Settings.ReplaceStartButton;
+        _hook.FallbackEnabled = Settings.SuppressWindowsMenu && (Settings.ReplaceWinKey || Settings.ReplaceStartButton);
     }
 
     public void ShowCalendar()

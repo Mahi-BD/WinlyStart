@@ -77,6 +77,7 @@ public static class Launcher
     public static void Lock() => Native.LockWorkStation();
     public static void SignOut() { if (!Native.ExitWindowsEx(Native.EWX_LOGOFF, 0)) Shutdown("/l"); }
     public static void Sleep() => Native.SetSuspendState(false, false, false);
+    public static void Hibernate() => Native.SetSuspendState(true, false, false);
     public static void Restart() => Shutdown("/r /t 0");
     public static void ShutDown()
     {

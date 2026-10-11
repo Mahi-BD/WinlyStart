@@ -68,7 +68,8 @@ anything you add can be renamed or re-pointed later with **Edit…**.
 ### The expanded rail
 Click the hamburger for the labelled rail. Choose which shortcuts appear — Documents,
 Downloads, Music, Pictures, Videos, Network, Personal folder, File Explorer, Settings and a
-Calendar — in Settings.
+Calendar — in Settings. Sleep, Shut down and Hibernate buttons sit right under the hamburger
+(Hibernate only where Windows has it enabled); they can be turned off in Settings too.
 
 ![The expanded rail](docs/screenshots/rail.png)
 
@@ -100,9 +101,10 @@ Winly Start never injects into `explorer.exe`, never patches files, never writes
   Start button (located through UI Automation, so it works with left- and centre-aligned
   taskbars). The menu opens **where the Start button is**.
 * **Fallback** — if the Windows 11 menu still appears (touch gesture, or the Windows key
-  pressed while an elevated app has focus, which hooks cannot see), Winly Start notices it
-  and takes over; the Windows menu dismisses itself. This works with both Start menu hosts
-  Windows 11 has used (`StartMenuExperienceHost.exe`, and `SearchHost.exe` on 25H2).
+  pressed while an elevated app has focus, which hooks cannot see), Winly Start closes it and
+  opens in its place. This works with both Start menu hosts Windows 11 has used
+  (`StartMenuExperienceHost.exe`, and `SearchHost.exe` on 25H2) and is the "Keep the Windows 11
+  Start menu closed" switch in Settings.
 
 Closing Winly Start removes the hooks; Windows 11 is untouched.
 

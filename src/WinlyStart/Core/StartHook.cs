@@ -344,10 +344,24 @@ public sealed class StartHook : IDisposable
         // AttachThreadInput + SetForegroundWindow. A tagged Escape closes it — and, being input sent by
         // this process, it also satisfies the foreground-lock rule for the SetForegroundWindow that
         // ShowMenu (and its 120 ms retry) makes next.
-        Native.SendKeys(Native.Key(Native.VK_ESCAPE, up: false, Magic), Native.Key(Native.VK_ESCAPE, up: true, Magic));
+        NativeMenu = hwnd;
+        CloseNativeMenu();
         Debug($"Windows Start menu appeared (host {host}) → closing it, taking over");
         Post(Show);
     }
+
+    /// <summary>The Windows Start menu window the fallback last saw. The menu window keeps closing it
+    /// (<see cref="CloseNativeMenu"/>) until it is really gone — one Escape is not always enough.</summary>
+    public static volatile IntPtr NativeMenu;
+
+    /// <summary>True while that window is on screen (a hidden CoreWindow stays "visible" but cloaked).</summary>
+    public static bool NativeMenuOpen =>
+        NativeMenu != IntPtr.Zero && Native.IsWindowVisible(NativeMenu) && !Native.IsCloaked(NativeMenu);
+
+    /// <summary>A tagged Escape to the Windows Start menu: closes it, and counts as input sent by this
+    /// process, which unlocks SetForegroundWindow for the takeover.</summary>
+    public static void CloseNativeMenu() =>
+        Native.SendKeys(Native.Key(Native.VK_ESCAPE, up: false, Magic), Native.Key(Native.VK_ESCAPE, up: true, Magic));
 
     private static bool PointerOnTaskbarOutsideStart()
     {

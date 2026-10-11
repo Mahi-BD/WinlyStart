@@ -46,6 +46,8 @@
                         <TextBlock Text="Replace the Windows 11 Start menu" Style="{StaticResource DlgH2}"/>
                         <CheckBox x:Name="WinKey" Content="Windows key and Ctrl+Esc open Winly Start"/>
                         <CheckBox x:Name="StartButton" Content="Clicking the Start button opens Winly Start"/>
+                        <CheckBox x:Name="SuppressMenu" Content="Keep the Windows 11 Start menu closed"
+                                  ToolTip="If the Windows 11 menu still appears (touch, an administrator window had the focus, a dropped hook), close it at once and open Winly Start instead"/>
                         <CheckBox x:Name="Autostart" Content="Start with Windows (current user only)"/>
                     </StackPanel>
                 </Border>
@@ -137,6 +139,8 @@
                             <CheckBox x:Name="RailSettings" Content="Settings"/>
                             <CheckBox x:Name="RailCalendar" Content="Calendar" ToolTip="Adds a calendar button that opens the calendar"/>
                         </UniformGrid>
+                        <CheckBox x:Name="RailQuickPower" Content="Sleep / Shut down / Hibernate at the top" Margin="0,4,0,0"
+                                  ToolTip="Hibernate shows only when Windows has hibernation enabled"/>
                     </StackPanel>
                 </Border>
 

@@ -163,10 +163,13 @@ Repo/Instruction/read.md   this file
 ```
 
 ## Settings (`settings.json`)
-`ReplaceWinKey`, `ReplaceStartButton`, `StartWithWindows` (HKCU Run key), `Theme`
-(Auto/Light/Dark), `TileColumns` (6/8), `MenuHeight`, `ShowRecentlyAdded`, `ShowMostUsed`,
-`OpenAtStartButton` (align under the Win11 Start button instead of the left corner),
-`TrimMemoryWhenHidden`.
+`ReplaceWinKey`, `ReplaceStartButton`, `SuppressWindowsMenu` ("Keep the Windows 11 Start menu
+closed" = the WinEvent fallback; off → the Windows menu is left alone whenever it appears),
+`StartWithWindows` (HKCU Run key), `Theme` (Auto/Light/Dark), `TileColumns` (4–12; 6/8 in the
+Settings window, any value by dragging), `MenuHeight`, `ListWidth`, `ShowRecentlyAdded`,
+`ShowMostUsed`, `OpenAtCorner`, `TrimMemoryWhenHidden`, `Rail.*` (folders + `Calendar` +
+`QuickPower` = Sleep / Shut down / Hibernate buttons under the hamburger; Hibernate shows only when
+`IsPwrHibernateAllowed()`), `ProfileImagePath`.
 
 ## Verified on Windows (2026-09-08, build 26200.8037, light theme, centred taskbar)
 Tested live on a Windows 11 Pro box (self-contained build). Confirmed working:
@@ -393,6 +396,20 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
   and `AppItem` now set `Foreground = Rs.Text` explicitly (white on dark, black on light — verified).
   Rule: any control with a default WPF style that sets `Foreground` (ListBox, Button/ToggleButton,
   TextBox, ComboBox…) needs an explicit `Rs.Text` / `Dlg.Text` setter; inheritance alone is not enough.
+- **"Keep the Windows 11 Start menu closed"** (user report 10-12 with a screenshot of *both* menus
+  open): the fallback now keeps closing the Windows menu until it is really gone — `StartHook.NativeMenu`
+  remembers the window, `NativeMenuOpen` checks `IsWindowVisible && !IsCloaked` (DWMWA_CLOAKED; a
+  closed CoreWindow stays "visible"), and the menu window's `_fgRetry` timer (120 ms, up to 6 ticks)
+  sends another tagged Escape and re-grabs the foreground while it is still up. Exposed as
+  `Settings.SuppressWindowsMenu` (default on; `FallbackEnabled = SuppressWindowsMenu && (ReplaceWinKey
+  || ReplaceStartButton)`).
+- **Quick power buttons** (user request 10-12): Sleep (E708) / Shut down (E7E8) / Hibernate (E708 with a
+  small E7E8 overlay — MDL2 has no hibernate glyph) under the hamburger in the icon rail and, labelled,
+  at the top of the expanded rail. `Rail.QuickPower` toggles them; Hibernate is **disabled** (dimmed,
+  tooltip "Hibernation is turned off on this PC") when `powercfg /h` is off (`IsPwrHibernateAllowed`),
+  Sleep when no standby state exists (`IsPwrSuspendAllowed`) — the test VM DESKTOP-TG4AQRP has
+  neither (`powercfg /a`). Disabled rather than hidden: a vanished button looks like a bug.
+  `Launcher.Hibernate` = `SetSuspendState(true,…)`.
 - **Export… / Import…** buttons in the Settings footer (`Core/Backup.cs`). One JSON document:
   `{ app, version, exported, files: { "settings.json": {…}, "tiles.json": {…}, "custom.json": {…},
   "usage.json": {…}, "calendar.json": {…} } }` — the data files embedded verbatim
