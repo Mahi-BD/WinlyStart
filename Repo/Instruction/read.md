@@ -387,8 +387,12 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
 - **Dark-mode combo boxes showed their value dark-on-dark** (user report 10-12: "in dark background
   the text should be white"). `DlgComboBox`'s header is a `ToggleButton`, whose default style forces
   the system *ControlText* colour onto its content, so the selected value ignored `Dlg.Text`. Fixed
-  with `TextElement.Foreground="{DynamicResource Dlg.Text}"` on that `ContentPresenter`. The menu
-  itself was already right in both modes (black on light, white on dark — screenshots 10-12).
+  with `TextElement.Foreground="{DynamicResource Dlg.Text}"` on that `ContentPresenter`. Second report
+  the same day: the **app-list names** were grey in dark mode — the `ListBox` / `ListBoxItem` default
+  styles set the system *ControlText* brush, which beat the window's inherited `Rs.Text`; `AppListBox`
+  and `AppItem` now set `Foreground = Rs.Text` explicitly (white on dark, black on light — verified).
+  Rule: any control with a default WPF style that sets `Foreground` (ListBox, Button/ToggleButton,
+  TextBox, ComboBox…) needs an explicit `Rs.Text` / `Dlg.Text` setter; inheritance alone is not enough.
 - **Export… / Import…** buttons in the Settings footer (`Core/Backup.cs`). One JSON document:
   `{ app, version, exported, files: { "settings.json": {…}, "tiles.json": {…}, "custom.json": {…},
   "usage.json": {…}, "calendar.json": {…} } }` — the data files embedded verbatim

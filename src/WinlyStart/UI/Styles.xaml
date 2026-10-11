@@ -195,6 +195,9 @@
 
     <!-- App list container: no selection colour, 10 % hover overlay, keyboard focus shows the same -->
     <Style x:Key="AppItem" TargetType="ListBoxItem">
+        <!-- explicit: the ListBox/ListBoxItem default styles set the system ControlText colour, which
+             does not follow the menu theme and left app names grey in dark mode -->
+        <Setter Property="Foreground" Value="{DynamicResource Rs.Text}"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="Margin" Value="0"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -224,6 +227,7 @@
     </Style>
 
     <Style x:Key="AppListBox" TargetType="ListBox">
+        <Setter Property="Foreground" Value="{DynamicResource Rs.Text}"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="0"/>
