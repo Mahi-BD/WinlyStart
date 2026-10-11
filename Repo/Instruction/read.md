@@ -406,10 +406,11 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
 - **Quick power buttons** (user request 10-12): Sleep (E708) / Shut down (E7E8) / Hibernate (E708 with a
   small E7E8 overlay — MDL2 has no hibernate glyph) under the hamburger in the icon rail and, labelled,
   at the top of the expanded rail. `Rail.QuickPower` toggles them; Hibernate is **disabled** (dimmed,
-  tooltip "Hibernation is turned off on this PC") when `powercfg /h` is off (`IsPwrHibernateAllowed`),
-  Sleep when no standby state exists (`IsPwrSuspendAllowed`) — the test VM DESKTOP-TG4AQRP has
-  neither (`powercfg /a`). Disabled rather than hidden: a vanished button looks like a bug.
-  `Launcher.Hibernate` = `SetSuspendState(true,…)`.
+  tooltip "Hibernation is not available on this PC") when `IsPwrHibernateAllowed()` is false (no
+  hiberfile / firmware without S4). Disabled rather than hidden: a vanished button looks like a bug.
+  Sleep is always enabled, like the power flyout — the first cut dimmed it on `IsPwrSuspendAllowed()`
+  and the user objected at once (the test box is a QEMU VM: `powercfg /a` lists no S1–S4 at all, yet
+  the user expects Sleep there). `Launcher.Hibernate` = `SetSuspendState(true,…)`.
 - **Export… / Import…** buttons in the Settings footer (`Core/Backup.cs`). One JSON document:
   `{ app, version, exported, files: { "settings.json": {…}, "tiles.json": {…}, "custom.json": {…},
   "usage.json": {…}, "calendar.json": {…} } }` — the data files embedded verbatim

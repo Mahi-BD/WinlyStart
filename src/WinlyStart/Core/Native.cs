@@ -258,7 +258,6 @@ internal static partial class Native
 
     [DllImport("powrprof.dll")] public static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
     [DllImport("powrprof.dll")] [return: MarshalAs(UnmanagedType.U1)] public static extern bool IsPwrHibernateAllowed();
-    [DllImport("powrprof.dll")] [return: MarshalAs(UnmanagedType.U1)] public static extern bool IsPwrSuspendAllowed();
 
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
     /// <summary>DWMWA_CLOAKED: a UWP CoreWindow that is "closed" stays IsWindowVisible but is cloaked.</summary>

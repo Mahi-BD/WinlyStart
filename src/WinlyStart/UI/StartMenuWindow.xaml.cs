@@ -322,11 +322,12 @@ public partial class StartMenuWindow : Window
         Width = WidthForColumns(s.TileColumns);
         foreach (var g in _groups) { g.Columns = s.TileColumns; g.Pack(); }
         BuildRail();
-        // quick power buttons under the hamburger; Sleep / Hibernate stay visible but disabled (dimmed,
-        // tooltip says why) where this PC does not support them — a vanished button looks like a bug
+        // quick power buttons under the hamburger. Sleep is always offered, exactly like the power flyout
+        // (IsPwrSuspendAllowed is false on VMs where Sleep still works for the user). Hibernate needs a
+        // hibernation file, so it stays visible but disabled (dimmed, tooltip says why) when there is none —
+        // a vanished button looks like a bug.
         QuickPower.Visibility = QuickPowerFlyout.Visibility = s.Rail.QuickPower ? Visibility.Visible : Visibility.Collapsed;
-        PowerAvailability(SleepButton, SleepFlyoutButton, Native.IsPwrSuspendAllowed(), "Sleep", "Sleep is not available on this PC");
-        PowerAvailability(HibernateButton, HibernateFlyoutButton, Native.IsPwrHibernateAllowed(), "Hibernate", "Hibernation is turned off on this PC (powercfg /h on)");
+        PowerAvailability(HibernateButton, HibernateFlyoutButton, Native.IsPwrHibernateAllowed(), "Hibernate", "Hibernation is not available on this PC (powercfg /h on)");
         static void PowerAvailability(Button rail, Button flyout, bool ok, string tip, string offTip)
         {
             foreach (var b in new[] { rail, flyout })
