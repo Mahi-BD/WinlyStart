@@ -28,6 +28,9 @@ public partial class StartMenuWindow : Window
     private int _liveTick;
     // finishes a hide by hand if the fade's Completed callback never arrives (see HideMenu)
     private readonly DispatcherTimer _hideGuard = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    // One more try at the foreground shortly after an open that did not get it (the fallback path: the
+    // Windows menu still held the focus while we showed; by now it has closed and the grab succeeds).
+    private readonly DispatcherTimer _fgRetry = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
     // tile drag state
     private TileVm? _dragTile;
@@ -51,6 +54,15 @@ public partial class StartMenuWindow : Window
         Theme.Current.Changed += ApplyBackdrop;
         _liveTimer.Tick += (_, _) => LiveTick();
         _hideGuard.Tick += (_, _) => FinishHide();
+        _fgRetry.Tick += (_, _) =>
+        {
+            _fgRetry.Stop();
+            if (!_visible || _closing) return;
+            Native.ForceForeground(_hwnd);
+            bool ok = Native.GetForegroundWindow() == _hwnd;
+            if (ok) { Activate(); AppList.Focus(); }
+            StartHook.Debug($"foreground retry → {ok}");
+        };
         ApplyBackdrop();
         BuildRail();
         ApplySettings();
@@ -140,7 +152,9 @@ public partial class StartMenuWindow : Window
         Native.ForceForeground(_hwnd);
         Activate();
         AppList.Focus();
-        StartHook.Debug($"ShowMenu visible={_visible} fg-after={(Native.GetForegroundWindow() == _hwnd)}");
+        bool fg = Native.GetForegroundWindow() == _hwnd;
+        if (!fg) _fgRetry.Start();
+        StartHook.Debug($"ShowMenu visible={_visible} fg-after={fg}");
     }
 
     public void HideMenu()
@@ -154,6 +168,7 @@ public partial class StartMenuWindow : Window
         // Insurance: if the fade's Completed never fires (animation replaced, dispatcher starved) the
         // window would sit half-faded for good — the "stuck menu". Finish by hand a little later.
         _hideGuard.Start();
+        _fgRetry.Stop();
     }
 
     private void FinishHide()

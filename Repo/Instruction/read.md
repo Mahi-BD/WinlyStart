@@ -45,7 +45,7 @@ GitHub: https://github.com/Mahi-BD/WinlyStart  ·  Local: `/home/mahi/Project/Wi
 | **Ctrl+Esc** | Same hook; swallowed and toggles Winly Start. | |
 | **Start button click** | `WH_MOUSE_LL` hook. If a left-click lands inside the Start button rectangle (found through UI Automation, `AutomationId = "StartButton"` inside `Shell_TrayWnd`, cached 2 s, refreshed on every foreground change and on a near miss) it is swallowed and Winly Start toggles. | Right-click (Win+X menu) passes through. Works with left- and centre-aligned taskbars. Ignored while a **full-screen** window of another process is in the foreground (RDP, a game, a video): it covers the taskbar, so the click is its, not the Start button's. A *maximised* window does not count (`IsZoomed`) — with an auto-hiding taskbar it also spans the monitor. |
 | **Click outside the menu** | Same mouse hook. Any button down while the menu is open at a point outside every visible window of the UI thread (`EnumThreadWindows`: the menu, its context menus, flyouts, tooltips, dialogs) → `Dismiss`. The click itself passes through. | Light dismiss no longer depends on `Window.Deactivated`, which never fires for clicks on the taskbar, the desktop or a no-activate window. `Deactivated` stays as the keyboard path (Alt+Tab). |
-| **Anything we missed** (touch gesture, Win key while an elevated window is focused) | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. When the foreground window belongs to `StartMenuExperienceHost.exe`, Winly Start shows itself and takes focus; the Windows 11 menu light-dismisses. | Slight flicker in this rare path only. |
+| **Anything we missed** (touch gesture, Win key while an elevated window is focused) | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. When a `Windows.UI.Core.CoreWindow` of `StartMenuExperienceHost.exe` **or `SearchHost.exe`** comes to the foreground, Winly Start sends it a tagged **Escape** (closes it; also counts as *our* input, which unlocks `SetForegroundWindow`) and shows itself; `ShowMenu` retries the foreground grab once after 120 ms (`_fgRetry`) if the first attempt lost. | Slight flicker in this rare path only. `AttachThreadInput` + `SetForegroundWindow` alone did **not** win the focus from the SearchHost window (both menus stayed up) — hence the Escape. **Windows 11 25H2 (build 26200) draws the Start menu inside `SearchHost.exe`, in the same CoreWindow (titled "Search") that also serves the Search flyout** — verified live 2026-10-12. So for SearchHost the fallback skips what it can tell is a search: a Win+S / Win+Q chord seen in the last 1.5 s, or the pointer on the taskbar away from the Start button (search-box click, search-highlights hover). Win+S behind an *elevated* window is the one blind spot: it opens Winly Start instead of Search. |
 
 **Full-screen remote sessions stay remote.** When the foreground window is full-screen *and* is a
 remote-control / VM client (class `TscShellContainerClass` = mstsc, or an exe named mstsc, msrdc,
@@ -360,7 +360,25 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
   round-trip on AD machines) is resolved off the UI thread and cached. `Prewarm()` shows the window once
   at opacity 0 at startup so the first real open does not pay for layout/font/composition setup.
   `TaskbarInfo` boxes the cached Start-button rect so the hook thread never reads a torn struct.
-- Version **1.5.2** (csproj, manifest, installer, MSIX manifest, CI). Not yet verified live on Windows.
+- Version **1.5.2** (csproj, manifest, installer, MSIX manifest, CI).
+- ✅ **Verified live 2026-10-12** on DESKTOP-TG4AQRP (Windows 11 Pro 26200, 1280×800, deployed to
+  `D:\WinlyStart\WinlyStart.exe`, driven through the NebulaSSH agent with `Repo/Temp/ws.ps1`): Win tap,
+  Ctrl+Esc and Start-button click open the menu with the Windows menu staying closed; a click outside
+  (left or right, on the desktop, on another window) dismisses and the click goes through; Win+R held
+  opens Run without the menu; six Win taps in 1.3 s leave a consistent state; tile click, list click and
+  search+Enter launch Notepad (packaged) and Calculator (Store) with the menu hiding at once and
+  reopening 150–180 ms later; working set 23–35 MB hidden. **First open after a fresh download took
+  4 s** (Defender scanning the new 145 MB exe + single-file extraction) — after a restart the first open
+  takes 174 ms, so it is a one-time cost, not a code path. Full-screen pass-through verified with a
+  fake full-screen window from an exe named `mstsc_fake.exe` (a renamed `mshta.exe`): Win tap →
+  "remote session owns the key, passing through", Start-button click at the local button → ignored.
+- ⚠️ **Windows 11 25H2 hosts the Start menu in `SearchHost.exe`** (found during that test: the
+  passed-through Win tap opened the native Start — Pinned / All, Category view — as a
+  `Windows.UI.Core.CoreWindow` titled "Search", hwnd shared with the Search flyout). The fallback keyed
+  on `StartMenuExperienceHost.exe` never fired there, so with an elevated window focused the Windows
+  menu stayed. Fixed the same day (table above): SearchHost accepted, searches skipped by the Win+S/Q
+  chord and the pointer-on-taskbar tests, tagged Escape + 120 ms foreground retry because the SearchHost
+  window does not give up the focus to `AttachThreadInput`.
 
 Microsoft Store submission (2026-09-09):
 - Product **Winly Start** reserved in Partner Center as an **EXE or MSI app** (unpackaged Win32).

@@ -48,8 +48,9 @@ public sealed class StartHook : IDisposable
     private int _lastHookTick, _lastReinstall;
 
     private bool _winDown, _otherKey, _passThrough, _swallowUp;
-    private long _lastWinDown;
-    private readonly Dictionary<uint, bool> _isStartHost = new();
+    private long _lastWinDown, _lastSearchChord;
+    // pid → 0 = not a Start host, 1 = StartMenuExperienceHost.exe, 2 = SearchHost.exe (Windows 11 25H2+)
+    private readonly Dictionary<uint, byte> _isStartHost = new();
     private readonly Dictionary<uint, bool> _isRemoteClient = new();
     private Native.POINT _probe;
     private bool _probeHit;
@@ -192,7 +193,11 @@ public sealed class StartHook : IDisposable
             return Native.CallNextHookEx(_kbHook, code, wParam, lParam);
         }
 
-        if (_winDown && down) _otherKey = true;      // Win+X style chord → let Windows handle it
+        if (_winDown && down)
+        {
+            _otherKey = true;                        // Win+X style chord → let Windows handle it
+            if (k.vkCode is 0x53 or 0x51) _lastSearchChord = Environment.TickCount64;   // Win+S / Win+Q = Search
+        }
 
         if (down && k.vkCode == Native.VK_ESCAPE && (Native.GetAsyncKeyState(Native.VK_CONTROL) & 0x8000) != 0
             && !ForegroundOwnsWinKey())
@@ -316,13 +321,40 @@ public sealed class StartHook : IDisposable
         if (!FallbackEnabled || idObject != 0 || hwnd == IntPtr.Zero) return;
         if (Native.GetClassName(hwnd) != "Windows.UI.Core.CoreWindow") return;
         Native.GetWindowThreadProcessId(hwnd, out uint pid);
-        if (!_isStartHost.TryGetValue(pid, out bool isStart))
+        if (!_isStartHost.TryGetValue(pid, out byte host))
         {
-            isStart = Native.GetProcessImageName(pid).EndsWith("StartMenuExperienceHost.exe", StringComparison.OrdinalIgnoreCase);
+            string exe = Native.GetProcessImageName(pid);
+            host = exe.EndsWith("StartMenuExperienceHost.exe", StringComparison.OrdinalIgnoreCase) ? (byte)1
+                 : exe.EndsWith("SearchHost.exe", StringComparison.OrdinalIgnoreCase) ? (byte)2 : (byte)0;
             if (_isStartHost.Count > 64) _isStartHost.Clear();
-            _isStartHost[pid] = isStart;
+            _isStartHost[pid] = host;
         }
-        if (isStart) Post(Show);
+        if (host == 0) return;
+        if (host == 2)
+        {
+            // Windows 11 25H2 (build 26200) draws the Start menu inside SearchHost.exe — in the very same
+            // CoreWindow (titled "Search") that also serves the Search flyout. Skip what we can tell is a
+            // search: a Win+S / Win+Q chord just went by, or the pointer sits on the taskbar away from the
+            // Start button (search-box click, search-highlights hover). Win+S while an elevated window is
+            // focused is the one case we cannot see; it then opens Winly Start instead of Search.
+            if (Environment.TickCount64 - _lastSearchChord < 1500) { Debug("SearchHost after Win+S/Q → search, ignored"); return; }
+            if (PointerOnTaskbarOutsideStart()) { Debug("SearchHost with the pointer on the taskbar → search, ignored"); return; }
+        }
+        // The Windows menu holds the focus and (SearchHost at least) does not give it up to
+        // AttachThreadInput + SetForegroundWindow. A tagged Escape closes it — and, being input sent by
+        // this process, it also satisfies the foreground-lock rule for the SetForegroundWindow that
+        // ShowMenu (and its 120 ms retry) makes next.
+        Native.SendKeys(Native.Key(Native.VK_ESCAPE, up: false, Magic), Native.Key(Native.VK_ESCAPE, up: true, Magic));
+        Debug($"Windows Start menu appeared (host {host}) → closing it, taking over");
+        Post(Show);
+    }
+
+    private static bool PointerOnTaskbarOutsideStart()
+    {
+        if (!Native.GetCursorPos(out var pt)) return false;
+        var tray = Native.FindWindowW("Shell_TrayWnd", null);
+        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var r) || !r.Contains(pt.X, pt.Y)) return false;
+        return TaskbarInfo.StartButton is not { } s || !Inflate(s, 3).Contains(pt.X, pt.Y);
     }
 
     private static void Post(Action? a)

@@ -94,7 +94,8 @@ Winly Start never injects into `explorer.exe`, never patches files, never writes
   taskbars). The menu opens **where the Start button is**.
 * **Fallback** — if the Windows 11 menu still appears (touch gesture, or the Windows key
   pressed while an elevated app has focus, which hooks cannot see), Winly Start notices it
-  and takes over; the Windows menu dismisses itself.
+  and takes over; the Windows menu dismisses itself. This works with both Start menu hosts
+  Windows 11 has used (`StartMenuExperienceHost.exe`, and `SearchHost.exe` on 25H2).
 
 Closing Winly Start removes the hooks; Windows 11 is untouched.
 
