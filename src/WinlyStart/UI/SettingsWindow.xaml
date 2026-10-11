@@ -148,10 +148,19 @@
         <!-- footer -->
         <Border Grid.Row="2" Background="{DynamicResource Dlg.Card}" BorderBrush="{DynamicResource Dlg.Border}"
                 BorderThickness="0,1,0,0" CornerRadius="0" Padding="28,14" Margin="0,16,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancel" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
-                <Button Content="Save" Style="{StaticResource DlgPrimaryButton}" IsDefault="True" Click="Ok_Click"/>
-            </StackPanel>
+            <Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button Content="Export…" Margin="0,0,10,0" Click="Export_Click"
+                            ToolTip="Save the tile layout (groups, sizes, positions), your added programs, files and websites, the menu size and every setting to a file"/>
+                    <Button Content="Import…" Margin="0,0,14,0" Click="Import_Click"
+                            ToolTip="Restore a layout and settings from an exported file"/>
+                    <TextBlock x:Name="BackupStatus" Style="{StaticResource DlgCaption}" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel" Margin="0,0,10,0" IsCancel="True" Click="Cancel_Click"/>
+                    <Button Content="Save" Style="{StaticResource DlgPrimaryButton}" IsDefault="True" Click="Ok_Click"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

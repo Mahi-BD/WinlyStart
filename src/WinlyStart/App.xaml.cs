@@ -30,8 +30,7 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (_, ex) => Log(ex.ExceptionObject as Exception);
 
         Settings = Store.Load("settings.json", JsonCtx.Default.Settings);
-        Settings.TileColumns = Math.Clamp(Settings.TileColumns == 0 ? 6 : Settings.TileColumns, 4, 12);
-        Settings.MenuHeight = Math.Clamp(Settings.MenuHeight, 480, 1200);
+        Normalize(Settings);
 
         Theme.Current.Start(Settings.Theme);
         Catalog = new AppCatalog();
@@ -55,6 +54,29 @@ public partial class App : Application
 
         Autostart.Apply(Settings.StartWithWindows);
         base.OnStartup(e);
+    }
+
+    /// <summary>Clamps whatever came from disk (hand-edited, imported, or from an older version).</summary>
+    private static void Normalize(Settings s)
+    {
+        s.TileColumns = Math.Clamp(s.TileColumns == 0 ? 6 : s.TileColumns, 4, 12);
+        s.MenuHeight = Math.Clamp(s.MenuHeight, 480, 1200);
+        s.ListWidth = Math.Clamp(s.ListWidth == 0 ? 256 : s.ListWidth, Settings.MinListWidth, Settings.MaxListWidth);
+    }
+
+    /// <summary>After <see cref="Backup.Import"/>: re-read every data file and push it through the
+    /// running app — settings, theme, hooks, user items, and (via the rescan) the tile layout.</summary>
+    public static void ReloadFromDisk()
+    {
+        var app = (App)Current;
+        Settings = Store.Load("settings.json", JsonCtx.Default.Settings);
+        Normalize(Settings);
+        Theme.Current.SetMode(Settings.Theme);
+        app.ApplyHookSettings();
+        Autostart.Apply(Settings.StartWithWindows);
+        app._menu?.ReloadLayout();      // flags tiles.json for reload before the rescan below completes
+        Catalog.ReloadUserData();
+        app._calendar?.Close();         // reopens from calendar.json next time
     }
 
     /// <summary>Persist + push the current <see cref="Settings"/> into every subsystem.</summary>

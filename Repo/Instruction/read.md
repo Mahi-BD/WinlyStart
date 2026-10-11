@@ -86,8 +86,13 @@ In that case the fallback row above kicks in. This is by design — we do not ru
 └──────┴────────────────────────┴──────────────────────────────────┘
   48px      248px + scrollbar        6 tile units (3 medium) or 8
 ```
-- Window 648 × 640 (settings: height, tile columns 6/8). Square corners, no title bar,
+- Window 648 × 640 (settings: height, tile columns 6/8, list width). Square corners, no title bar,
   `ShowInTaskbar=false`, topmost while open, hides on deactivate / Esc / Win key.
+- **List / tiles divider** (`ListGrip`, 2026-10-12): an invisible 8 px Thumb straddling the right
+  edge of the list column; on hover (or while dragging) a 3 px accent bar fades in. Dragging sets
+  `Settings.ListWidth` (176–480, default 256 = `ListCol` width) live; the tile board keeps its
+  columns, so the window grows/shrinks with the list (`ChromeWidth` includes `ListWidth`). Saved on
+  drag end like the other grips (`Grip_DragCompleted`).
 - **Left rail**: hamburger (expands to labelled 248 px overlay), then bottom-aligned:
   user (name + account picture → Change account settings / Lock / Sign out),
   Documents, Pictures, Settings, Power (Sleep / Shut down / Restart).
@@ -372,6 +377,28 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
   takes 174 ms, so it is a one-time cost, not a code path. Full-screen pass-through verified with a
   fake full-screen window from an exe named `mstsc_fake.exe` (a renamed `mshta.exe`): Win tap →
   "remote session owns the key, passing through", Start-button click at the local button → ignored.
+- **List / tiles divider** (user request 10-12, see the UI layout section): hover-visible accent bar
+  between the app list and the tiles; drag sets `Settings.ListWidth`. Verified live.
+- **Settings window no longer clobbers a dragged size.** `ColumnsBox` only offered 6/8 and `Ok_Click`
+  wrote `6` for anything else, and the height slider's tick snapping rewrote `MenuHeight` — so
+  changing the *theme* shrank a 9-column menu back to 6 and reflowed every tile (user report 10-12).
+  Now a custom column count shows as a third "Custom — N units" entry and both values are written
+  back only when the user actually changed them (`_loadedColsIndex` / `_loadedHeight`).
+- **Dark-mode combo boxes showed their value dark-on-dark** (user report 10-12: "in dark background
+  the text should be white"). `DlgComboBox`'s header is a `ToggleButton`, whose default style forces
+  the system *ControlText* colour onto its content, so the selected value ignored `Dlg.Text`. Fixed
+  with `TextElement.Foreground="{DynamicResource Dlg.Text}"` on that `ContentPresenter`. The menu
+  itself was already right in both modes (black on light, white on dark — screenshots 10-12).
+- **Export… / Import…** buttons in the Settings footer (`Core/Backup.cs`). One JSON document:
+  `{ app, version, exported, files: { "settings.json": {…}, "tiles.json": {…}, "custom.json": {…},
+  "usage.json": {…}, "calendar.json": {…} } }` — the data files embedded verbatim
+  (`Utf8JsonWriter.WriteRawValue`), settings taken from the live object. Import parses the whole
+  file, round-trips every embedded file through its model (`JsonCtx`) and only then writes them with
+  `Store.WriteRaw`; `App.ReloadFromDisk()` re-reads settings (normalised), re-applies theme/hooks/
+  autostart, flags the menu to reload `tiles.json` at the next catalog change
+  (`StartMenuWindow.ReloadLayout`) and calls `AppCatalog.ReloadUserData()` (custom + usage, rescan +
+  web assets). A scan requested while one runs is now queued (`_rescan`) instead of dropped. Cached
+  favicons / previews are not in the file; website tiles fetch them again.
 - ⚠️ **Windows 11 25H2 hosts the Start menu in `SearchHost.exe`** (found during that test: the
   passed-through Win tap opened the native Start — Pinned / All, Category view — as a
   `Windows.UI.Core.CoreWindow` titled "Search", hwnd shared with the Search flyout). The fallback keyed

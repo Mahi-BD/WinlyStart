@@ -217,8 +217,11 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
+                                            <!-- TextElement.Foreground: a ToggleButton's default style forces the system
+                                                 ControlText colour on its content, which left the value dark-on-dark in dark mode -->
                                             <ContentPresenter Grid.Column="0" Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              TextElement.Foreground="{DynamicResource Dlg.Text}"
                                                               VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="10"
                                                        Foreground="{DynamicResource Dlg.TextSecondary}" VerticalAlignment="Center" Margin="8,0,0,0"/>

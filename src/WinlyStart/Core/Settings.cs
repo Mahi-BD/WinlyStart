@@ -19,6 +19,10 @@ public sealed class Settings
     /// Adjustable 4–12 by dragging the resize grip.</summary>
     public int TileColumns { get; set; } = 6;
     public int MenuHeight { get; set; } = 640;
+    /// <summary>Width of the app-list column in DIPs; set by dragging the divider between the list and
+    /// the tiles (shows on hover). 256 = Windows 10's 248 px list + scrollbar.</summary>
+    public int ListWidth { get; set; } = 256;
+    public const int MinListWidth = 176, MaxListWidth = 480;
     public bool ShowRecentlyAdded { get; set; } = true;
     public bool ShowMostUsed { get; set; } = true;
     /// <summary>Force the menu to the screen corner instead of following the Start button.</summary>
@@ -165,6 +169,9 @@ public static class Store
         catch { return; }
         _ = Task.Run(() => { try { Write(file, json); } catch { } });
     }
+
+    /// <summary>Writes a data file verbatim (used by <see cref="Backup"/>). Atomic like every other save.</summary>
+    public static void WriteRaw(string file, string json) => Write(file, json);
 
     private static void Write(string file, string json)
     {

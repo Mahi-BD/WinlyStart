@@ -42,6 +42,9 @@ with expandable Start-menu folders, and a tile board with groups.
 
 Type anywhere to search; press Enter to launch the first match.
 
+Hover the boundary between the app list and the tiles and a divider appears — drag it to give the
+list more or less room. The width, like the menu size, is remembered.
+
 ![Type to search](docs/screenshots/search.png)
 
 ### Live tiles
@@ -79,6 +82,10 @@ iCalendar (`.ics`). The window is resizable and remembers its size.
 ### Settings
 
 ![Settings](docs/screenshots/settings.png)
+
+**Export…** writes everything to one file — the tile layout (groups, tile sizes and positions), the
+programs, files and websites you added, the menu size and list width, and every setting — and
+**Import…** restores it, on this PC or another one.
 
 ## How it replaces the Start menu — and why that is safe
 

@@ -320,7 +320,7 @@
         </Grid.RenderTransform>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="48"/>
-            <ColumnDefinition Width="256"/>
+            <ColumnDefinition x:Name="ListCol" Width="256"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -397,6 +397,47 @@
         <Rectangle x:Name="GroupInsertLine" Grid.Column="2" Height="3" Fill="{DynamicResource Rs.Accent}" RadiusX="1.5" RadiusY="1.5"
                    VerticalAlignment="Top" HorizontalAlignment="Stretch" Margin="12,0,12,0" Visibility="Collapsed"
                    IsHitTestVisible="False" Panel.ZIndex="80"/>
+
+        <!-- divider between the app list and the tiles: invisible until hovered, drag to change the list width -->
+        <Thumb x:Name="ListGrip" Grid.Column="1" Width="8" HorizontalAlignment="Right" VerticalAlignment="Stretch" Margin="0,0,-4,0"
+               Cursor="SizeWE" Panel.ZIndex="92" Focusable="False" ToolTip="Drag to resize the app list"
+               DragStarted="Grip_DragStarted" DragDelta="ListGrip_DragDelta" DragCompleted="Grip_DragCompleted">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Background="Transparent">
+                        <Rectangle x:Name="Bar" Width="3" Margin="0,10" HorizontalAlignment="Center" RadiusX="1.5" RadiusY="1.5"
+                                   Fill="{DynamicResource Rs.Accent}" Opacity="0"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Bar" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.12"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Bar" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.25"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Bar" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.05"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
 
         <!-- ───────── expanded rail (hamburger): same items as the icon rail, with labels ───────── -->
         <Border x:Name="RailFlyout" Grid.ColumnSpan="2" Width="248" HorizontalAlignment="Left" Visibility="Collapsed"

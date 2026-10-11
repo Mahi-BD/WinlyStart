@@ -87,14 +87,24 @@ public sealed class AppEntry : INotifyPropertyChanged
 public sealed class AppCatalog
 {
     public IReadOnlyList<AppEntry> Apps { get; private set; } = Array.Empty<AppEntry>();
-    public UsageData Usage { get; }
+    public UsageData Usage { get; private set; }
     /// <summary>Items the user added by hand (Add program / file / website).</summary>
-    public CustomItems Custom { get; }
+    public CustomItems Custom { get; private set; }
     public event Action? Changed;
 
     private readonly List<FileSystemWatcher> _watchers = new();
     private System.Threading.Timer? _debounce;
-    private int _scanning;
+    private int _scanning, _rescan;
+
+    /// <summary>After an import replaced custom.json / usage.json on disk: take them over and rescan
+    /// so the imported items (and the tiles pointing at them) appear.</summary>
+    public void ReloadUserData()
+    {
+        Usage = Store.Load("usage.json", JsonCtx.Default.UsageData);
+        Custom = Store.Load("custom.json", JsonCtx.Default.CustomItems);
+        ScanAsync();
+        RefreshWebAssetsAsync();
+    }
 
     public AppCatalog()
     {
@@ -209,7 +219,8 @@ public sealed class AppCatalog
 
     public void ScanAsync()
     {
-        if (Interlocked.Exchange(ref _scanning, 1) == 1) return;
+        // a request while a scan runs is not lost: that scan runs once more when it finishes
+        if (Interlocked.Exchange(ref _scanning, 1) == 1) { Volatile.Write(ref _rescan, 1); return; }
         var t = new Thread(() =>
         {
             try
@@ -217,7 +228,11 @@ public sealed class AppCatalog
                 var list = Scan();
                 Application.Current?.Dispatcher.BeginInvoke(() => { Apps = list; Changed?.Invoke(); });
             }
-            finally { Interlocked.Exchange(ref _scanning, 0); }
+            finally
+            {
+                Interlocked.Exchange(ref _scanning, 0);
+                if (Interlocked.Exchange(ref _rescan, 0) == 1) ScanAsync();
+            }
         }) { IsBackground = true, Name = "WinlyStart.Scan" };
         t.SetApartmentState(ApartmentState.STA);
         t.Start();

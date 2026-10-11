@@ -12,6 +12,12 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         Dialog.Apply(this);
+        LoadFromSettings();
+    }
+
+    /// <summary>Fills every control from <see cref="App.Settings"/> (at open, and again after an import).</summary>
+    private void LoadFromSettings()
+    {
         var s = App.Settings;
         WinKey.IsChecked = s.ReplaceWinKey;
         StartButton.IsChecked = s.ReplaceStartButton;
@@ -27,8 +33,14 @@ public partial class SettingsWindow : Window
                               + "Settings › Apps › Startup to turn it on or off.";
         }
         ThemeBox.SelectedIndex = (int)s.Theme;
-        ColumnsBox.SelectedIndex = s.TileColumns == 8 ? 1 : 0;
+        // A size set by dragging the menu's grips (any column count, any height) must survive a visit
+        // here that only changes something else: remember what the controls show and write back on change.
+        while (ColumnsBox.Items.Count > 2) ColumnsBox.Items.RemoveAt(2);
+        if (s.TileColumns is not (6 or 8))
+            ColumnsBox.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"Custom — {s.TileColumns} units (set by dragging the menu)" });
+        ColumnsBox.SelectedIndex = _loadedColsIndex = s.TileColumns == 8 ? 1 : s.TileColumns == 6 ? 0 : 2;
         HeightSlider.Value = s.MenuHeight;
+        _loadedHeight = (int)HeightSlider.Value;     // after the slider's tick snapping
         AtCorner.IsChecked = s.OpenAtCorner;
         Recent.IsChecked = s.ShowRecentlyAdded;
         MostUsed.IsChecked = s.ShowMostUsed;
@@ -98,6 +110,54 @@ public partial class SettingsWindow : Window
     // IsCancel only closes windows opened with ShowDialog(); this window is shown with Show().
     private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
 
+    // ───────────────────────── export / import ─────────────────────────
+
+    private int _loadedColsIndex, _loadedHeight;
+
+    /// <summary>Everything in one file: settings (menu size, list width, theme, rail…), the tile
+    /// layout (groups, sizes, positions), items added by hand, launch counters, calendar notes.</summary>
+    private void Export_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export Winly Start layout and settings",
+            Filter = Backup.Filter, FileName = Backup.DefaultName, AddExtension = true, OverwritePrompt = true,
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            Backup.Export(dlg.FileName, System.Text.Json.JsonSerializer.Serialize(App.Settings, JsonCtx.Default.Settings));
+            BackupStatus.Text = "Exported to " + Path.GetFileName(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, "Could not write the file.\n\n" + ex.Message, "Export", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void Import_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Import Winly Start layout and settings", Filter = Backup.Filter, CheckFileExists = true };
+        if (dlg.ShowDialog(this) != true) return;
+        if (MessageBox.Show(this,
+                "Replace the current tile layout, added items and settings with the ones in\n" + Path.GetFileName(dlg.FileName) + "?",
+                "Import", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+        try
+        {
+            var restored = Backup.Import(dlg.FileName);
+            App.ReloadFromDisk();
+            LoadFromSettings();           // the controls still showed the old values
+            BackupStatus.Text = $"Imported {restored.Count} files from {Path.GetFileName(dlg.FileName)}";
+            StartHook.Debug("import → " + string.Join(", ", restored));
+        }
+        catch (Exception ex)
+        {
+            if (ex is not InvalidDataException) App.Log(ex);
+            MessageBox.Show(this, "Nothing was changed.\n\n" + ex.Message, "Import", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         var s = App.Settings;
@@ -105,8 +165,8 @@ public partial class SettingsWindow : Window
         s.ReplaceStartButton = StartButton.IsChecked == true;
         s.StartWithWindows = Autostart.IsChecked == true;
         s.Theme = (ThemeMode)Math.Max(0, ThemeBox.SelectedIndex);
-        s.TileColumns = ColumnsBox.SelectedIndex == 1 ? 8 : 6;
-        s.MenuHeight = (int)HeightSlider.Value;
+        if (ColumnsBox.SelectedIndex != _loadedColsIndex && ColumnsBox.SelectedIndex is 0 or 1) s.TileColumns = ColumnsBox.SelectedIndex == 1 ? 8 : 6;
+        if ((int)HeightSlider.Value != _loadedHeight) s.MenuHeight = (int)HeightSlider.Value;
         s.OpenAtCorner = AtCorner.IsChecked == true;
         s.ShowRecentlyAdded = Recent.IsChecked == true;
         s.ShowMostUsed = MostUsed.IsChecked == true;

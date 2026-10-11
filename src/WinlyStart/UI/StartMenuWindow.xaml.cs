@@ -304,8 +304,9 @@ public partial class StartMenuWindow : Window
         return false;
     }
 
-    // Window width = rail(48) + list(256) + chrome(26) + tile area(cols*Pitch - Gap).
-    private const double ChromeWidth = 48 + 256 + 26 - TileVm.Gap;   // constant part; add cols*Pitch
+    // Window width = rail(48) + list(ListWidth) + chrome(26) + tile area(cols*Pitch - Gap).
+    private const double RailWidth = 48;
+    private static double ChromeWidth => RailWidth + App.Settings.ListWidth + 26 - TileVm.Gap;   // add cols*Pitch
     private static double WidthForColumns(int cols) => ChromeWidth + cols * TileVm.Pitch;
     private static int ColumnsForWidth(double width) => Math.Clamp((int)Math.Round((width - ChromeWidth) / TileVm.Pitch), 4, 12);
 
@@ -313,6 +314,7 @@ public partial class StartMenuWindow : Window
     {
         var s = App.Settings;
         Height = s.MenuHeight;
+        ListCol.Width = new GridLength(s.ListWidth);
         Width = WidthForColumns(s.TileColumns);
         foreach (var g in _groups) { g.Columns = s.TileColumns; g.Pack(); }
         BuildRail();
@@ -339,6 +341,18 @@ public partial class StartMenuWindow : Window
     private void RightGrip_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e) => ApplyResize(true, false);
     private void TopGrip_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e) => ApplyResize(false, true);
     private void CornerGrip_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e) => ApplyResize(true, true);
+
+    /// <summary>The divider between the app list and the tile board (shows on hover). Dragging it changes
+    /// the list's width; the tile board keeps its columns, so the window grows or shrinks with the list.</summary>
+    private void ListGrip_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        Native.GetCursorPos(out var p);
+        int w = (int)Math.Round(Math.Clamp(p.X / _dragScale - _dragLeft - RailWidth, Settings.MinListWidth, Settings.MaxListWidth));
+        if (w == App.Settings.ListWidth) return;
+        App.Settings.ListWidth = w;
+        ListCol.Width = new GridLength(w);
+        Width = WidthForColumns(App.Settings.TileColumns);
+    }
 
     /// <summary>Live resize from the cursor: width snaps to whole tile columns (reflowing every group),
     /// height is free. The bottom-left corner stays pinned above the taskbar.</summary>
@@ -368,7 +382,7 @@ public partial class StartMenuWindow : Window
     {
         App.Settings.MenuHeight = (int)Math.Round(Height);
         Store.Save("settings.json", App.Settings, JsonCtx.Default.Settings);
-        StartHook.Debug($"resize → cols={App.Settings.TileColumns} h={App.Settings.MenuHeight}");
+        StartHook.Debug($"resize → cols={App.Settings.TileColumns} h={App.Settings.MenuHeight} list={App.Settings.ListWidth}");
     }
 
     private void ApplyBackdrop()
@@ -411,6 +425,14 @@ public partial class StartMenuWindow : Window
     }
 
     private void SaveTiles() => Store.Save("tiles.json", TileBoard.Save(_groups), JsonCtx.Default.TileLayout);
+
+    /// <summary>After an import: sizes from the new settings now, tiles from tiles.json at the next
+    /// catalog change (the rescan that follows), so tiles of freshly imported items resolve.</summary>
+    public void ReloadLayout()
+    {
+        _tilesLoaded = false;
+        ApplySettings();
+    }
 
     private void LaunchApp(AppEntry app)
     {
