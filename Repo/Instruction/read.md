@@ -411,6 +411,16 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
   Sleep is always enabled, like the power flyout — the first cut dimmed it on `IsPwrSuspendAllowed()`
   and the user objected at once (the test box is a QEMU VM: `powercfg /a` lists no S1–S4 at all, yet
   the user expects Sleep there). `Launcher.Hibernate` = `SetSuspendState(true,…)`.
+- **Windows 10: packaged-app tile icons looked tiny** (user screenshot 10-12, build 19045). Measured on
+  that PC with `IShellItemImageFactory` (`Repo/Temp`-style probe): Windows 10 returns packaged-app icons
+  **plated** — an opaque square in the app's tile colour with the glyph at only ~25 % of it, at every
+  requested size (96 → 24 px, 256 → 66 px, 512 → 131 px); Windows 11 returns the bare glyph on
+  transparency. On our accent tile the plate vanished and only the small glyph showed. Fix
+  (`ShellIcons.Unplate`, v1.5.3): for tile-sized packaged-app icons (64/96/256 requests, never the 32 px
+  list icon, which keeps the plate like Windows 10's own list) detect a plate (≥ 97 % opaque, four
+  corners the same colour, 2–85 % of pixels differ from it), make the plate transparent, crop to the
+  glyph + 12 % air; and because the glyph is so small, re-fetch at **4×** (≤ 512) when a plate was found
+  so the crop stays crisp. Desktop icons and Windows 11 glyphs are untouched (transparent → not plated).
 - **Export… / Import…** buttons in the Settings footer (`Core/Backup.cs`). One JSON document:
   `{ app, version, exported, files: { "settings.json": {…}, "tiles.json": {…}, "custom.json": {…},
   "usage.json": {…}, "calendar.json": {…} } }` — the data files embedded verbatim

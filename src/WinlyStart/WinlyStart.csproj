@@ -14,7 +14,7 @@
     <!-- Version info is stamped into the PE resources. Code-signing programs (the Microsoft Store
          and the SignPath Foundation both) require a signed binary to carry a product name and a
          version, so keep every field below populated. -->
-    <Version>1.5.2</Version>
+    <Version>1.5.3</Version>
     <Authors>Winly Start contributors</Authors>
     <Company>Winly Start contributors</Company>
     <Product>Winly Start</Product>
