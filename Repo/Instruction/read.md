@@ -89,7 +89,10 @@ In that case the fallback row above kicks in. This is by design — we do not ru
 - Window 648 × 640 (settings: height, tile columns 6/8, list width). Square corners, no title bar,
   `ShowInTaskbar=false`, topmost while open, hides on deactivate / Esc / Win key.
 - **List / tiles divider** (`ListGrip`, 2026-10-12): an invisible 8 px Thumb straddling the right
-  edge of the list column; on hover (or while dragging) a 3 px accent bar fades in. Dragging sets
+  edge of the list column; on hover (or while dragging) a 3 px accent bar shows — plain trigger
+  Setters, **no storyboards**: the first version faded it with EnterActions/ExitActions and the bar
+  stayed on after every drag (the drag's "to 1" animation held the value, the hover exit had already
+  fired while the pointer left the strip mid-drag, and nothing ran on drag end — user report, v1.5.4). Dragging sets
   `Settings.ListWidth` (176–480, default 256 = `ListCol` width) live; the tile board keeps its
   columns, so the window grows/shrinks with the list (`ChromeWidth` includes `ListWidth`). Saved on
   drag end like the other grips (`Grip_DragCompleted`).
