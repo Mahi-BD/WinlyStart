@@ -281,10 +281,12 @@ public partial class StartMenuWindow : Window
             case Native.ABE_LEFT: left = Math.Max(tb.Right, work.Left); top = work.Bottom - h; break;
             case Native.ABE_RIGHT: left = Math.Min(tb.Left, work.Right) - w; top = work.Bottom - h; break;
         }
-        // Open where the Start button actually is: centred on it. A centred taskbar puts the menu in
-        // the middle, a left-aligned one pushes it against the left edge once clamped below.
+        // Open where the Start button actually is: the menu's left edge on the button's left edge, so
+        // it grows to the right of the button the way the Windows 10 corner menu (and our left/top
+        // taskbar placements) do. A left-aligned taskbar lands at the screen edge; a centred one
+        // starts at the button instead of straddling it (user request 10-14).
         if (!App.Settings.OpenAtCorner && edge is Native.ABE_TOP or Native.ABE_BOTTOM && bar?.StartButton is { } sb)
-            left = sb.Left + sb.Width / 2 - w / 2;
+            left = sb.Left;
 
         left = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Right - w));
 

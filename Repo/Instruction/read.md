@@ -62,7 +62,9 @@ the Start *click* has no such help and goes through the window-under-pointer rul
 `POINT`: the click, the pointer for the Win key / Ctrl+Esc / tray icon, the centre of the Windows menu
 for the fallback). `StartMenuWindow.Position()` takes the taskbar on that point's monitor
 (`TaskbarInfo.BarFor`; a monitor without a taskbar — "show my taskbar on all displays" off — falls back
-to the primary taskbar, like Windows), that taskbar's Start button for centring, that monitor's work
+to the primary taskbar, like Windows), that taskbar's Start button to align on (the menu's **left edge
+sits on the button's left edge** — since 1.5.6; 1.4.0–1.5.5 centred the menu on the button, which on a
+centred taskbar left the button under the middle of the menu), that monitor's work
 area and **that monitor's DPI** (`GetDpiForMonitor`) for the pixel size. `Left`/`Top` are DIPs at the
 window's *current* DPI, and WPF handles `WM_DPICHANGED` inside the setter, so a cross-DPI move runs
 the placement twice (second pass sees the new scale). `StartHook.MenuMonitor` tells the hook where
@@ -481,6 +483,32 @@ not secondary monitor"):
 - Helper `Repo/Temp/npz.sh <agent> <file.ps1>` gzip-packs a script into the 8 KB `cmd` line (plain
   `-EncodedCommand` of a 3.9 KB script was "The command line is too long"); `nup.sh` (connector
   `/upload`) hung for both agents — uploads are not reliable on those agents, use `npz.sh`.
+
+Thirteenth round — v1.5.6 (2026-10-14, user screenshot of the Win11 VM with the Start button boxed
+in red: "when start icon is middle the menu should open rightly same as left and right or top menu"):
+- **Menu placement on a centred taskbar.** Since 1.4.0 `Position()` centred the menu on the Start
+  button, so on a centred Windows 11 taskbar the button ended up under the *middle* of the menu
+  (1280-wide VM: button at x 395, menu 18–815). The user wants it to open *from* the button towards
+  the right, the way a left-aligned button (menu at the corner) and the left/top taskbar placements
+  behave. `Position()` now puts the menu's **left edge on the Start button's left edge**
+  (`left = sb.Left`) for top/bottom taskbars; the work-area clamp still pulls it in at the screen's
+  right edge, and `Settings.OpenAtCorner` still forces the corner. One line changed. **Verified live**
+  on the VM (1280×800, centred taskbar): UIA Start button `396,752 45×48`, menu window `395,112 796×640`
+  — left edge on the button, menu running to the right; screenshot checked. Not released (see below).
+- **No GitHub release.** User rule from the same day: *"dont relese on github untill i say"* — build,
+  test on the VM and commit (git + SVN) only; **never push a `v*` tag or create a release** until the
+  user says so. Test deploys go over the LAN: `python3 -m http.server 8766` in `out/sc` on this box
+  (192.168.31.132), `curl.exe` on the VM (192.168.31.97, same LAN, no .NET runtime installed → always
+  the self-contained single-file exe), copied over `%LocalAppData%\Programs\Winly Start\WinlyStart.exe`
+  (the 1.5.5 installer's path — note the space; the Run key and the uninstall entry point there).
+  ⚠️ Publish **exactly as CI does**: `dotnet publish src/WinlyStart -c Release -r win-x64 --self-contained true
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out/sc`. Without
+  `IncludeNativeLibrariesForSelfExtract` the WPF native DLLs stay *beside* the exe, a copied-alone exe
+  starts, then dies in `HwndSubclass.HookWindowProc` with `DllNotFoundException` (Event Log: .NET Runtime
+  1026 + Application Error 1000, exception 0xe0434352) — that cost one deploy round on 10-14.
+- Harness: `Repo/Temp/place.ps1` (via `npz.sh`) taps Win, prints the UIA Start-button rectangle and the
+  menu window rectangle, screenshots the primary screen and PUTs it to a tiny receiver
+  (`scratchpad/recv.py`, port 8767) on this box.
 
 Microsoft Store submission (2026-09-09):
 - Product **Winly Start** reserved in Partner Center as an **EXE or MSI app** (unpackaged Win32).
