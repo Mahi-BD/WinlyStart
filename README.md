@@ -99,11 +99,11 @@ Winly Start never injects into `explorer.exe`, never patches files, never writes
   shortcut keeps working natively.
 * **Start button** — a low-level mouse hook that recognises a left-click on a taskbar's
   Start button (located through UI Automation, so it works with left- and centre-aligned
-  taskbars, on every monitor that shows a taskbar). The menu opens **where the Start button is**:
-  its left edge on the Start button, so a centred taskbar opens it beside the button rather than
-  straddling it, and on the monitor whose Start button you clicked — or, for the Windows key, the
-  one the mouse pointer is on. The click counts only when the taskbar itself is under the pointer,
-  so a full-screen window covering it (a remote desktop, a game) keeps the click.
+  taskbars, on every monitor that shows a taskbar). The menu opens **where your taskbar puts Start**:
+  in the middle of the screen on a centred taskbar, like the Windows 11 menu, and at the corner on a
+  left-aligned one, like Windows 10 — on the monitor whose Start button you clicked or, for the
+  Windows key, the one the mouse pointer is on. The click counts only when the taskbar itself is
+  under the pointer, so a full-screen window covering it (a remote desktop, a game) keeps the click.
 * **Fallback** — if the Windows 11 menu still appears (touch gesture, or the Windows key
   pressed while an elevated app has focus, which hooks cannot see), Winly Start closes it and
   opens in its place. This works with both Start menu hosts Windows 11 has used

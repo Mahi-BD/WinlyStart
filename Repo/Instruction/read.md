@@ -62,9 +62,10 @@ the Start *click* has no such help and goes through the window-under-pointer rul
 `POINT`: the click, the pointer for the Win key / Ctrl+Esc / tray icon, the centre of the Windows menu
 for the fallback). `StartMenuWindow.Position()` takes the taskbar on that point's monitor
 (`TaskbarInfo.BarFor`; a monitor without a taskbar — "show my taskbar on all displays" off — falls back
-to the primary taskbar, like Windows), that taskbar's Start button to align on (the menu's **left edge
-sits on the button's left edge** — since 1.5.6; 1.4.0–1.5.5 centred the menu on the button, which on a
-centred taskbar left the button under the middle of the menu), that monitor's work
+to the primary taskbar, like Windows), that taskbar's Start button to decide the horizontal place
+(button centred on the bar → menu **centred on that monitor's work area**; button at the bar's edge →
+menu at the corner — since 1.5.6; 1.4.0–1.5.5 centred the menu on the *button*, which on a centred
+Win11 bar is left of the screen's middle), that monitor's work
 area and **that monitor's DPI** (`GetDpiForMonitor`) for the pixel size. `Left`/`Top` are DIPs at the
 window's *current* DPI, and WPF handles `WM_DPICHANGED` inside the setter, so a cross-DPI move runs
 the placement twice (second pass sees the new scale). `StartHook.MenuMonitor` tells the hook where
@@ -487,14 +488,21 @@ not secondary monitor"):
 Thirteenth round — v1.5.6 (2026-10-14, user screenshot of the Win11 VM with the Start button boxed
 in red: "when start icon is middle the menu should open rightly same as left and right or top menu"):
 - **Menu placement on a centred taskbar.** Since 1.4.0 `Position()` centred the menu on the Start
-  button, so on a centred Windows 11 taskbar the button ended up under the *middle* of the menu
-  (1280-wide VM: button at x 395, menu 18–815). The user wants it to open *from* the button towards
-  the right, the way a left-aligned button (menu at the corner) and the left/top taskbar placements
-  behave. `Position()` now puts the menu's **left edge on the Start button's left edge**
-  (`left = sb.Left`) for top/bottom taskbars; the work-area clamp still pulls it in at the screen's
-  right edge, and `Settings.OpenAtCorner` still forces the corner. One line changed. **Verified live**
-  on the VM (1280×800, centred taskbar): UIA Start button `396,752 45×48`, menu window `395,112 796×640`
-  — left edge on the button, menu running to the right; screenshot checked. Not released (see below).
+  *button*. On a centred Windows 11 taskbar the button is not at the screen's middle (Windows centres
+  the whole icon group), so the menu sat left of centre with the button under its middle (1280-wide
+  VM: button x 396, menu 18–815). What the user wants (two screenshots, 10-14): **Start in the middle →
+  menu in the middle of the screen**, like the Windows 11 menu; Start at the left → menu at the
+  corner, like Windows 10. (A first attempt put the menu's left edge on the button, menu 395–1191 —
+  a misreading of "open rightly", reverted within the hour; second screenshot: "check its not middle
+  of the screen. when start in middle the menu should be on middle".) `Position()` now decides from
+  geometry, no registry (`TaskbarAl`) or OS-version check: the button counts as centred when it sits
+  more than its own width away from the taskbar's left edge (`sb.Left - tb.Left > sb.Width`), then
+  `left = (work.Left + work.Right - w) / 2`; otherwise `left = sb.Left` (= the corner on Windows 10 and
+  on a left-aligned Windows 11 bar). Per monitor (`tb`/`work` are that taskbar's), follows a live
+  alignment change within the 2 s bar cache, and `Settings.OpenAtCorner` still forces the corner.
+  Settings caption updated to say so. **Verified live** on the VM (1280×800, centred taskbar): Start
+  button `396,752 45×48`, menu `242,112 796×640` → centre x 640 = the screen's middle; screenshot
+  checked. Not released (see below).
 - **No GitHub release.** User rule from the same day: *"dont relese on github untill i say"* — build,
   test on the VM and commit (git + SVN) only; **never push a `v*` tag or create a release** until the
   user says so. Test deploys go over the LAN: `python3 -m http.server 8766` in `out/sc` on this box

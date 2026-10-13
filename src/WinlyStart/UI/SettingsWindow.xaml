@@ -85,7 +85,7 @@
                             </DockPanel>
                         </Grid>
                         <CheckBox x:Name="AtCorner" Content="Always open at the screen corner" Margin="0,10,0,4"/>
-                        <TextBlock Text="Off: the menu opens under the Start button, wherever your taskbar puts it. You can also resize the menu by dragging its top-right corner." Style="{StaticResource DlgCaption}"/>
+                        <TextBlock Text="Off: the menu follows your taskbar — in the middle of the screen when Start is centred, at the corner when Start is on the left. You can also resize the menu by dragging its top-right corner." Style="{StaticResource DlgCaption}"/>
                     </StackPanel>
                 </Border>
 
