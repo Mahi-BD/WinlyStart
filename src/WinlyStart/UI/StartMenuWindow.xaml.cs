@@ -22,6 +22,8 @@ public partial class StartMenuWindow : Window
     private bool _recentExpanded, _tilesLoaded, _visible, _closing;
     private long _shownAt, _dismissedAt;
     private string? _filter;
+    // where the open was asked for (the click, the pointer, the Windows menu): picks the monitor and taskbar
+    private Native.POINT _anchor;
 
     // live tiles: one 1 s clock while the menu is visible (stopped when hidden — zero cost otherwise)
     private readonly DispatcherTimer _liveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -116,12 +118,20 @@ public partial class StartMenuWindow : Window
 
     // ───────────────────────── show / hide ─────────────────────────
 
-    public void ToggleMenu()
+    public void ToggleMenu() => ToggleMenu(Pointer());
+
+    internal void ToggleMenu(Native.POINT at)
     {
-        // The click that just light-dismissed the menu may also be a toggle (the tray icon, the Start
-        // button of another taskbar): it closed the menu, it must not reopen it.
+        // The click that just light-dismissed the menu may also be a toggle (the tray icon): it closed
+        // the menu, it must not reopen it.
         if (_closing && Environment.TickCount64 - _dismissedAt < 300) return;
-        if (_visible && !_closing) HideMenu(); else ShowMenu();
+        if (_visible && !_closing) HideMenu(); else ShowMenu(at);
+    }
+
+    private static Native.POINT Pointer()
+    {
+        Native.GetCursorPos(out var p);
+        return p;
     }
 
     /// <summary>Light dismiss from the mouse hook: a button went down outside every window of ours.</summary>
@@ -133,7 +143,10 @@ public partial class StartMenuWindow : Window
         HideMenu();
     }
 
-    public void ShowMenu()
+    public void ShowMenu() => ShowMenu(Pointer());
+
+    /// <summary>Open (or keep open) on the monitor that holds <paramref name="at"/>.</summary>
+    internal void ShowMenu(Native.POINT at)
     {
         bool wasClosing = _closing;
         _closing = false;
@@ -143,6 +156,7 @@ public partial class StartMenuWindow : Window
         if (!_visible)
         {
             _visible = true;
+            _anchor = at;
             ShowActivated = true;
             Position();
             Show();
@@ -151,7 +165,16 @@ public partial class StartMenuWindow : Window
             _liveTimer.Start();
             App.Catalog.RefreshWebAssetsAsync();   // refresh website favicons / previews in the background
         }
-        else if (wasClosing) Animate(Root.Opacity, 1, Slide.Y, 0, 120);   // caught mid fade-out
+        else
+        {
+            if (wasClosing) Animate(Root.Opacity, 1, Slide.Y, 0, 120);   // caught mid fade-out
+            // asked for on another monitor (its Start button, or the Windows menu appeared there): move
+            if (Native.MonitorFromPoint(at, Native.MONITOR_DEFAULTTONEAREST) != Native.MonitorFromWindow(_hwnd, Native.MONITOR_DEFAULTTONEAREST))
+            {
+                _anchor = at;
+                Position();
+            }
+        }
         Native.ForceForeground(_hwnd);
         Activate();
         AppList.Focus();
@@ -234,15 +257,21 @@ public partial class StartMenuWindow : Window
         Slide.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
-    /// <summary>Bottom-left above the taskbar (or wherever the taskbar is), in physical pixels → DIPs.</summary>
+    /// <summary>Above the taskbar of the monitor the request came from (<see cref="_anchor"/>) — or
+    /// wherever that taskbar is — in physical pixels → DIPs. A monitor without a taskbar ("show my
+    /// taskbar on all displays" off) uses the primary taskbar, like Windows.</summary>
     private void Position()
     {
-        var (tb, edge) = TaskbarInfo.GetTaskbar();
-        var mon = TaskbarInfo.MonitorInfo(Native.MonitorFromPoint(
-            new Native.POINT { X = (tb.Left + tb.Right) / 2, Y = (tb.Top + tb.Bottom) / 2 }, Native.MONITOR_DEFAULTTONEAREST));
-        double scale = Native.GetDpiForWindow(_hwnd) / 96.0;
-        if (scale <= 0) scale = 1;
-        int w = (int)Math.Round(Width * scale), h = (int)Math.Round(Height * scale);
+        var bar = TaskbarInfo.BarFor(_anchor);
+        var (tb, edge) = TaskbarInfo.GetTaskbar();          // primary; every taskbar sits on the same edge
+        if (bar is { Primary: false } && Native.GetWindowRect(bar.Hwnd, out var secondary) && secondary.Width > 0) tb = secondary;
+        var hMon = Native.MonitorFromPoint(
+            new Native.POINT { X = (tb.Left + tb.Right) / 2, Y = (tb.Top + tb.Bottom) / 2 }, Native.MONITOR_DEFAULTTONEAREST);
+        var mon = TaskbarInfo.MonitorInfo(hMon);
+        // The size is what the window will have on the *target* monitor (its DPI); WPF re-scales the
+        // window the moment it lands there.
+        double target = TaskbarInfo.Dpi(hMon) / 96.0;
+        int w = (int)Math.Round(Width * target), h = (int)Math.Round(Height * target);
         var work = mon.rcWork;
 
         int left = work.Left, top = Math.Min(tb.Top, work.Bottom) - h;
@@ -254,15 +283,25 @@ public partial class StartMenuWindow : Window
         }
         // Open where the Start button actually is: centred on it. A centred taskbar puts the menu in
         // the middle, a left-aligned one pushes it against the left edge once clamped below.
-        if (!App.Settings.OpenAtCorner && edge is Native.ABE_TOP or Native.ABE_BOTTOM && TaskbarInfo.StartButton is { } sb)
+        if (!App.Settings.OpenAtCorner && edge is Native.ABE_TOP or Native.ABE_BOTTOM && bar?.StartButton is { } sb)
             left = sb.Left + sb.Width / 2 - w / 2;
 
         left = Math.Clamp(left, work.Left, Math.Max(work.Left, work.Right - w));
 
         left = Math.Clamp(left, mon.rcMonitor.Left, Math.Max(mon.rcMonitor.Left, mon.rcMonitor.Right - w));
         top = Math.Clamp(top, mon.rcMonitor.Top, Math.Max(mon.rcMonitor.Top, mon.rcMonitor.Bottom - h));
-        Left = left / scale;
-        Top = top / scale;
+        // Left/Top are DIPs at the window's *current* DPI (that is how WPF converts them). Moving onto a
+        // monitor with another DPI changes that DPI mid-way (WM_DPICHANGED is handled inside the setter),
+        // so a second pass with the new scale puts the window exactly where the first one aimed.
+        for (int pass = 0; pass < 2; pass++)
+        {
+            double scale = Native.GetDpiForWindow(_hwnd) / 96.0;
+            if (scale <= 0) scale = 1;
+            Left = left / scale;
+            Top = top / scale;
+            if (Math.Abs(Native.GetDpiForWindow(_hwnd) / 96.0 - scale) < 0.01) break;
+        }
+        StartHook.MenuMonitor = hMon;
     }
 
     private void ResetTransient()

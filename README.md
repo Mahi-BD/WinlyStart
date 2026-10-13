@@ -97,9 +97,12 @@ Winly Start never injects into `explorer.exe`, never patches files, never writes
   Winly Start lets the key through *and* sends a harmless masking key alongside it, so
   Windows sees a "Win + something" chord and does not open its own menu. Every Win+X
   shortcut keeps working natively.
-* **Start button** — a low-level mouse hook that recognises a left-click on the taskbar's
+* **Start button** — a low-level mouse hook that recognises a left-click on a taskbar's
   Start button (located through UI Automation, so it works with left- and centre-aligned
-  taskbars). The menu opens **where the Start button is**.
+  taskbars, on every monitor that shows a taskbar). The menu opens **where the Start button is**:
+  on the monitor whose Start button you clicked, or — for the Windows key — the one the mouse
+  pointer is on. The click counts only when the taskbar itself is under the pointer, so a
+  full-screen window covering it (a remote desktop, a game) keeps the click.
 * **Fallback** — if the Windows 11 menu still appears (touch gesture, or the Windows key
   pressed while an elevated app has focus, which hooks cannot see), Winly Start closes it and
   opens in its place. This works with both Start menu hosts Windows 11 has used
@@ -132,7 +135,6 @@ Developer notes, architecture and the project rules are in
 
 ## Known limitations
 
-* The menu opens on the primary monitor's taskbar; multi-monitor placement is on the roadmap.
 * Acrylic renders as a solid tint on current Windows 11 builds — the old blur API no longer
   blurs, and real blur needs the DWM system-backdrop path.
 * Website live tiles show the preview image a site publishes (`og:image`), not a live browser
@@ -142,7 +144,9 @@ Developer notes, architecture and the project rules are in
   (brief flicker of the Windows 11 menu). Winly Start deliberately does not run elevated.
 * In a **full-screen Remote Desktop or virtual-machine session** the Windows key, Ctrl+Esc and the
   Start button belong to the remote machine, exactly as they do without Winly Start — its Start menu
-  opens, the local one stays out of the way. In a windowed session they open Winly Start.
+  opens, the local one stays out of the way. A Start-button click counts as yours only when the
+  taskbar itself is under the pointer, whatever window happens to have the focus. In a windowed
+  session they open Winly Start.
 
 ## Code signing
 

@@ -40,12 +40,12 @@ public partial class App : Application
         Launcher.BuiltinHandler = id => { if (id == "builtin:calendar") ShowCalendar(); };
 
         _hook = new StartHook();
-        _hook.Toggle += () => _menu.ToggleMenu();
-        _hook.Show += () => _menu.ShowMenu();
+        _hook.Toggle += at => _menu.ToggleMenu(at);
+        _hook.Show += at => _menu.ShowMenu(at);
         _hook.Dismiss += () => _menu.Dismiss();
         ApplyHookSettings();
         _hook.Install();
-        TaskbarInfo.RefreshStartButtonAsync();
+        TaskbarInfo.RefreshAsync();
         _menu.Prewarm();
 
         _tray = new TrayIcon("Winly Start");

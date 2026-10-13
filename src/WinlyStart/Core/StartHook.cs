@@ -6,8 +6,8 @@ namespace WinlyStart.Core;
 /// <summary>
 /// The "replacement" — three user-mode, fully revertible hooks:
 ///  1. keyboard: a bare Windows-key tap (or Ctrl+Esc) toggles Winly Start instead of the Windows 11 menu,
-///  2. mouse: a left-click on the taskbar's Start button toggles Winly Start; any other click outside
-///     the menu light-dismisses it (like the real Start menu — independent of window activation),
+///  2. mouse: a left-click on a taskbar's Start button (any monitor) toggles Winly Start; any other click
+///     outside the menu light-dismisses it (like the real Start menu — independent of window activation),
 ///  3. foreground WinEvent: if the Windows 11 Start menu still appears (touch, elevated window focused),
 ///     Winly Start takes over and the Windows menu light-dismisses.
 /// The hooks live on their own thread with its own message loop. Windows delivers low-level hook
@@ -61,11 +61,14 @@ public sealed class StartHook : IDisposable
 
     /// <summary>Set by the menu window: true from the moment it opens until a hide starts.</summary>
     public static volatile bool MenuVisible;
+    /// <summary>Set by the menu window: the monitor it was last placed on.</summary>
+    public static volatile IntPtr MenuMonitor;
 
-    /// <summary>Raised on the UI thread. Toggle = open/close, Show = make sure it is open,
-    /// Dismiss = the user clicked outside the menu.</summary>
-    public event Action? Toggle;
-    public event Action? Show;
+    /// <summary>Raised on the UI thread with the screen point the request came from (the click, the
+    /// pointer, the Windows menu that appeared) — it picks the monitor the menu opens on. Toggle =
+    /// open/close, Show = make sure it is open there, Dismiss = the user clicked outside the menu.</summary>
+    internal event Action<Native.POINT>? Toggle;
+    internal event Action<Native.POINT>? Show;
     public event Action? Dismiss;
 
     public StartHook()
@@ -186,7 +189,7 @@ public sealed class StartHook : IDisposable
                         Native.Key(MaskVk, up: true, Magic),
                         Native.Key((ushort)k.vkCode, up: true, Magic));
                     Debug($"winkey tap → toggle (vk={k.vkCode})");
-                    Post(Toggle);
+                    Post(Toggle, Cursor());
                     return (IntPtr)1;
                 }
             }
@@ -202,7 +205,7 @@ public sealed class StartHook : IDisposable
         if (down && k.vkCode == Native.VK_ESCAPE && (Native.GetAsyncKeyState(Native.VK_CONTROL) & 0x8000) != 0
             && !ForegroundOwnsWinKey())
         {
-            Post(Toggle);                               // Ctrl+Esc
+            Post(Toggle, Cursor());                     // Ctrl+Esc
             return 1;
         }
         return Native.CallNextHookEx(_kbHook, code, wParam, lParam);
@@ -218,19 +221,24 @@ public sealed class StartHook : IDisposable
             var m = Marshal.PtrToStructure<Native.MSLLHOOKSTRUCT>(lParam);
             if (msg == Native.WM_LBUTTONDOWN && StartButtonEnabled)
             {
-                var r = TaskbarInfo.StartButton;
-                // the button re-centres constantly: a near miss refreshes the cache for the next click
-                if (r is { } probe && !probe.Contains(m.pt.X, m.pt.Y) && Inflate(probe, 48).Contains(m.pt.X, m.pt.Y))
-                    TaskbarInfo.RefreshStartButtonAsync();
-                if (DebugEnabled)
-                    Debug($"click ({m.pt.X},{m.pt.Y}) startBtn={(r is { } rr ? $"{rr.Left},{rr.Top} {rr.Width}x{rr.Height}" : "null")} hit={(r is { } h && h.Contains(m.pt.X, m.pt.Y))}");
                 // a couple of pixels of slack: the button re-centres constantly and a near-miss used to
-                // fall through to the Windows 11 menu. A full-screen window (remote desktop, a game, a
-                // video) covers the taskbar, so a click there belongs to it, not to the Start button.
-                if (r is { } rect && Inflate(rect, 3).Contains(m.pt.X, m.pt.Y) && !FullscreenForeignForeground())
+                // fall through to the Windows 11 menu; a wider miss refreshes the cache for the next click
+                var bar = TaskbarInfo.StartButtonAt(m.pt.X, m.pt.Y, 3);
+                if (bar == null && TaskbarInfo.StartButtonAt(m.pt.X, m.pt.Y, 48) != null) TaskbarInfo.RefreshAsync();
+                if (DebugEnabled)
+                    Debug($"click ({m.pt.X},{m.pt.Y}) startBtn={(bar is { StartButton: { } rr } ? $"{rr.Left},{rr.Top} {rr.Width}x{rr.Height}" : "none")} under={Native.GetClassName(RootWindowAt(m.pt))}");
+                // The Start button must really be what sits under the pointer. A full-screen window (a
+                // remote desktop, a game, a video) covers the taskbar, so a click there is its — on a
+                // full-screen remote session it is the *remote* Start button. Decided from the window under
+                // the point, not the foreground window: a low-level hook runs before the click activates
+                // anything, so the foreground is still whatever was used last, maybe on another monitor.
+                if (bar != null && Native.GetClassName(RootWindowAt(m.pt)) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
                 {
                     _swallowUp = true;
-                    Post(Toggle);
+                    // Start pressed on another monitor's taskbar while the menu is open: it moves there
+                    bool move = MenuVisible && MenuMonitor != IntPtr.Zero
+                        && MenuMonitor != Native.MonitorFromWindow(bar.Hwnd, Native.MONITOR_DEFAULTTONEAREST);
+                    Post(move ? Show : Toggle, m.pt);
                     return 1;
                 }
             }
@@ -250,9 +258,6 @@ public sealed class StartHook : IDisposable
         }
         return Native.CallNextHookEx(_mouseHook, code, wParam, lParam);
     }
-
-    private static Native.RECT Inflate(Native.RECT r, int by) =>
-        new() { Left = r.Left - by, Top = r.Top - by, Right = r.Right + by, Bottom = r.Bottom + by };
 
     /// <summary>Is this screen point inside any visible top-level window of the UI thread (the menu,
     /// its context menus, flyouts, tooltips, dialogs)? Message-free, so safe inside a hook.</summary>
@@ -283,16 +288,20 @@ public sealed class StartHook : IDisposable
         return r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
     }
 
-    /// <summary>The foreground window is a full-screen window of another process (not the desktop or
-    /// the taskbar) — it is covering the Start button, so clicks there are not Start-button clicks.</summary>
-    private static bool FullscreenForeignForeground()
+    /// <summary>The top-level window under a screen point (message-free: WindowFromPoint consults
+    /// HTTRANSPARENT only for windows of the calling thread, so it cannot block on another process).</summary>
+    private static IntPtr RootWindowAt(Native.POINT pt)
     {
-        var fg = Native.GetForegroundWindow();
-        if (fg == IntPtr.Zero) return false;
-        Native.GetWindowThreadProcessId(fg, out uint pid);
-        if (pid == Environment.ProcessId) return false;
-        if (Native.GetClassName(fg) is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
-        return IsFullscreen(fg);
+        var h = Native.WindowFromPoint(pt);
+        if (h == IntPtr.Zero) return IntPtr.Zero;
+        var root = Native.GetAncestor(h, Native.GA_ROOT);
+        return root != IntPtr.Zero ? root : h;
+    }
+
+    private static Native.POINT Cursor()
+    {
+        Native.GetCursorPos(out var pt);
+        return pt;
     }
 
     /// <summary>A full-screen remote desktop / virtual machine client has the foreground: it forwards
@@ -317,7 +326,7 @@ public sealed class StartHook : IDisposable
     private void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
         // apps coming and going re-centre the taskbar, which moves the Start button
-        TaskbarInfo.RefreshStartButtonAsync();
+        TaskbarInfo.RefreshAsync();
         if (!FallbackEnabled || idObject != 0 || hwnd == IntPtr.Zero) return;
         if (Native.GetClassName(hwnd) != "Windows.UI.Core.CoreWindow") return;
         Native.GetWindowThreadProcessId(hwnd, out uint pid);
@@ -347,7 +356,10 @@ public sealed class StartHook : IDisposable
         NativeMenu = hwnd;
         CloseNativeMenu();
         Debug($"Windows Start menu appeared (host {host}) → closing it, taking over");
-        Post(Show);
+        // open where the Windows menu opened (the monitor whose Start button was used)
+        var at = Native.GetWindowRect(hwnd, out var r) && r.Width > 0
+            ? new Native.POINT { X = (r.Left + r.Right) / 2, Y = (r.Top + r.Bottom) / 2 } : Cursor();
+        Post(Show, at);
     }
 
     /// <summary>The Windows Start menu window the fallback last saw. The menu window keeps closing it
@@ -366,14 +378,17 @@ public sealed class StartHook : IDisposable
     private static bool PointerOnTaskbarOutsideStart()
     {
         if (!Native.GetCursorPos(out var pt)) return false;
-        var tray = Native.FindWindowW("Shell_TrayWnd", null);
-        if (tray == IntPtr.Zero || !Native.GetWindowRect(tray, out var r) || !r.Contains(pt.X, pt.Y)) return false;
-        return TaskbarInfo.StartButton is not { } s || !Inflate(s, 3).Contains(pt.X, pt.Y);
+        return TaskbarInfo.OnTaskbar(pt.X, pt.Y) && TaskbarInfo.StartButtonAt(pt.X, pt.Y, 3) == null;
     }
 
     private static void Post(Action? a)
     {
         if (a != null) Application.Current?.Dispatcher.BeginInvoke(a);
+    }
+
+    private static void Post(Action<Native.POINT>? a, Native.POINT at)
+    {
+        if (a != null) Application.Current?.Dispatcher.BeginInvoke(() => a(at));
     }
 
     /// <summary>Opt-in trace to %LocalAppData%\WinlyStart\debug.log (set env WINLYSTART_DEBUG=1). Off by default.</summary>

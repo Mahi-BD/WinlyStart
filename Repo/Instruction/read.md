@@ -43,7 +43,7 @@ GitHub: https://github.com/Mahi-BD/WinlyStart  ·  Local: `/home/mahi/Project/Wi
 |---|---|---|
 | **Windows key** tap | `WH_KEYBOARD_LL` hook (`Core/StartHook.cs`). Win-down passes through. A lone Win-up is swallowed and re-emitted as a chord — a tagged `VK_CONTROL` tap, then the Win-up — so the shell sees "Win + something" and never opens its own Start; then Winly Start toggles. | All Win+X combos keep working natively (they set `_otherKey` and pass untouched). Auto-repeat while Win is held is one press; a Win-down after >1.2 s of silence is a new press (the key-up was missed behind an elevated window). |
 | **Ctrl+Esc** | Same hook; swallowed and toggles Winly Start. | |
-| **Start button click** | `WH_MOUSE_LL` hook. If a left-click lands inside the Start button rectangle (found through UI Automation, `AutomationId = "StartButton"` inside `Shell_TrayWnd`, cached 2 s, refreshed on every foreground change and on a near miss) it is swallowed and Winly Start toggles. | Right-click (Win+X menu) passes through. Works with left- and centre-aligned taskbars. Ignored while a **full-screen** window of another process is in the foreground (RDP, a game, a video): it covers the taskbar, so the click is its, not the Start button's. A *maximised* window does not count (`IsZoomed`) — with an auto-hiding taskbar it also spans the monitor. |
+| **Start button click** | `WH_MOUSE_LL` hook. If a left-click lands inside the Start button rectangle of **any taskbar** (`Shell_TrayWnd` + every `Shell_SecondaryTrayWnd`; Windows 10: the child window of class `Start`, Windows 11: UI Automation `AutomationId = "StartButton"`; `TaskbarInfo.Bars`, cached 2 s, refreshed on every foreground change and on a near miss) **and the top-level window under the pointer (`WindowFromPoint` → `GetAncestor(GA_ROOT)`) is that taskbar**, it is swallowed and Winly Start toggles — on the monitor of that taskbar. With the menu already open on another monitor the click *moves* it there (`Show`) instead of closing it. | Right-click (Win+X menu) passes through. Works with left- and centre-aligned taskbars. Anything else under the pointer (a full-screen remote desktop, a game, a video, an auto-hidden taskbar behind a maximised window) owns the click: on a full-screen RDP session it is the *remote* Start button. Decided from the window under the point, **not** the foreground window — a low-level hook runs before the click activates anything, so the foreground was still the last-used window (on another monitor, say), which is how 1.5.4 opened the local menu over a remote session (user report 10-14). |
 | **Click outside the menu** | Same mouse hook. Any button down while the menu is open at a point outside every visible window of the UI thread (`EnumThreadWindows`: the menu, its context menus, flyouts, tooltips, dialogs) → `Dismiss`. The click itself passes through. | Light dismiss no longer depends on `Window.Deactivated`, which never fires for clicks on the taskbar, the desktop or a no-activate window. `Deactivated` stays as the keyboard path (Alt+Tab). |
 | **Anything we missed** (touch gesture, Win key while an elevated window is focused) | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. When a `Windows.UI.Core.CoreWindow` of `StartMenuExperienceHost.exe` **or `SearchHost.exe`** comes to the foreground, Winly Start sends it a tagged **Escape** (closes it; also counts as *our* input, which unlocks `SetForegroundWindow`) and shows itself; `ShowMenu` retries the foreground grab once after 120 ms (`_fgRetry`) if the first attempt lost. | Slight flicker in this rare path only. `AttachThreadInput` + `SetForegroundWindow` alone did **not** win the focus from the SearchHost window (both menus stayed up) — hence the Escape. **Windows 11 25H2 (build 26200) draws the Start menu inside `SearchHost.exe`, in the same CoreWindow (titled "Search") that also serves the Search flyout** — verified live 2026-10-12. So for SearchHost the fallback skips what it can tell is a search: a Win+S / Win+Q chord seen in the last 1.5 s, or the pointer on the taskbar away from the Start button (search-box click, search-highlights hover). Win+S behind an *elevated* window is the one blind spot: it opens Winly Start instead of Search. |
 
@@ -54,7 +54,19 @@ RDesk, Parsec, Moonlight — `StartHook.RemoteClients`), the Windows key and Ctr
 through: the client forwards them to the far machine, whose own Start menu opens, exactly as without
 Winly Start. In a *windowed* session the key is local and opens Winly Start, matching mstsc's default
 "Apply Windows key combinations: only when using the full screen". Decided on the Win-*down*
-(`_passThrough`) so the matching Win-up is consistent.
+(`_passThrough`) so the matching Win-up is consistent. (mstsc also installs its own `WH_KEYBOARD_LL`
+hook in full screen and swallows the Win key before ours sees it — so the Win key was always right;
+the Start *click* has no such help and goes through the window-under-pointer rule above.)
+
+**Multi-monitor.** Every open carries the screen point it came from (`StartHook.Toggle/Show` pass a
+`POINT`: the click, the pointer for the Win key / Ctrl+Esc / tray icon, the centre of the Windows menu
+for the fallback). `StartMenuWindow.Position()` takes the taskbar on that point's monitor
+(`TaskbarInfo.BarFor`; a monitor without a taskbar — "show my taskbar on all displays" off — falls back
+to the primary taskbar, like Windows), that taskbar's Start button for centring, that monitor's work
+area and **that monitor's DPI** (`GetDpiForMonitor`) for the pixel size. `Left`/`Top` are DIPs at the
+window's *current* DPI, and WPF handles `WM_DPICHANGED` inside the setter, so a cross-DPI move runs
+the placement twice (second pass sees the new scale). `StartHook.MenuMonitor` tells the hook where
+the menu is.
 
 **The hooks run on their own thread** (`WinlyStart.Hooks`, a plain `GetMessage` loop). Windows calls a
 low-level hook on the thread that installed it and allows it only a few hundred milliseconds;
@@ -442,6 +454,34 @@ session the Windows key opened both the remote Start menu and ours. Root causes 
   chord and the pointer-on-taskbar tests, tagged Escape + 120 ms foreground retry because the SearchHost
   window does not give up the focus to `AttachThreadInput`.
 
+Twelfth round — v1.5.5 (2026-10-14, user report: "when remote desktop connect and click start … it
+open the main win menu but not the remote menu. also if multi monitor it open the menu on the main …
+not secondary monitor"):
+- **Start click over a full-screen remote session opened the local menu.** 1.5.4 decided "is the
+  taskbar covered?" from the *foreground* window (`FullscreenForeignForeground`). A low-level mouse hook
+  runs before the click activates anything, so with two monitors the foreground was still the window
+  the user worked in last (Firefox on the other screen) while the click landed on the remote Start
+  button inside the full-screen mstsc window — on Windows 10 the remote and local Start buttons sit on
+  the same pixels (0,1040 48×40). Now the rule is "the top-level window under the pointer is a
+  taskbar" (`WindowFromPoint` + `GetAncestor(GA_ROOT)`, class `Shell_TrayWnd`/`Shell_SecondaryTrayWnd`),
+  which is also simpler than the full-screen/`IsZoomed` heuristics it replaces. Probed read-only on the
+  user's PCs (NebulaSSH agents `864-348-091-011` DEVAI Win11 26200 and `675-192-591-101` Win10 19045
+  with mstsc open): `WindowFromPoint` at the Start button returns root `Shell_TrayWnd` on both; UIA
+  `StartButton` lookup 206–462 ms (hence the async cache). ⚠️ PowerShell passes `$null` to a `string`
+  P/Invoke parameter as `""`, so a probe's `FindWindowEx(tray, 0, "Start", $null)` found nothing while
+  `EnumChildWindows` listed the `Start` child — the C# path (real null) is fine.
+- **Multi-monitor.** `TaskbarInfo` now snapshots every taskbar (`Bar` records: hwnd, primary?, rect,
+  Start button) instead of one Start rectangle; the hook hit-tests all of them and posts the click point;
+  the Win key / Ctrl+Esc post the pointer, the fallback the Windows menu's centre, so the menu opens on
+  the monitor the user is working on (Windows 10 behaviour). Clicking the other monitor's Start button
+  while the menu is open moves it there. Neither of the user's PCs had a second monitor attached and the
+  Win11 test VM was offline, so this is **verified by build + code review only, not live** — first thing
+  to test when a two-monitor box is available: open on each taskbar, move between them, mixed DPI
+  (125 % + 100 %) placement, "show taskbar on all displays" off.
+- Helper `Repo/Temp/npz.sh <agent> <file.ps1>` gzip-packs a script into the 8 KB `cmd` line (plain
+  `-EncodedCommand` of a 3.9 KB script was "The command line is too long"); `nup.sh` (connector
+  `/upload`) hung for both agents — uploads are not reliable on those agents, use `npz.sh`.
+
 Microsoft Store submission (2026-09-09):
 - Product **Winly Start** reserved in Partner Center as an **EXE or MSI app** (unpackaged Win32).
   MSIX was rejected on purpose: a packaged app cannot install the low-level hooks the whole product
@@ -488,7 +528,7 @@ surface still tints correctly to the theme.
 
 ## Roadmap
 - v0.1 (this scaffold): everything above, static tiles, single primary-monitor taskbar.
-- v0.2: multi-monitor (open on the monitor whose Start button was clicked), group drag,
+- v0.2: ~~multi-monitor (open on the monitor whose Start button was clicked)~~ (done in 1.5.5), group drag,
   keyboard navigation polish, jump-list on right-click (recent files), localisation.
 - v0.3: MSIX/winget package, Start folder ("Windows Tools") virtual folders, tile badges.
 - Not planned: true live tiles (the platform API no longer exists on Windows 11).
