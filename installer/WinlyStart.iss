@@ -73,13 +73,16 @@ Source: "..\README.md"; DestDir: "{app}"; DestName: "README.md";   Flags: ignore
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
-[Registry]
-; the same per-user Run value the app's own "Start with Windows" setting uses
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
-    ValueName: "WinlyStart"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
-
 [Run]
+; "Start when I sign in" is the app's own switch: a Task Scheduler logon task for this user only
+; (Autostart in App.xaml.cs). Registered here so a silent install gets it before the first sign-in.
+Filename: "{app}\{#AppExeName}"; Parameters: "--autostart on"; Tasks: startup; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; the logon task, and the Run value versions before 1.5.6 wrote — both this user's only
+Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""Winly Start"" /F"; Flags: runhidden; RunOnceId: "DelLogonTask"
+Filename: "{sys}\reg.exe"; Parameters: "delete HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v WinlyStart /f"; Flags: runhidden; RunOnceId: "DelRunValue"
 
 [UninstallDelete]
 ; the app's own data is left alone on uninstall; only the install folder goes

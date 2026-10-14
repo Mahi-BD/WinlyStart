@@ -49,6 +49,7 @@
                         <CheckBox x:Name="SuppressMenu" Content="Keep the Windows 11 Start menu closed"
                                   ToolTip="If the Windows 11 menu still appears (touch, an administrator window had the focus, a dropped hook), close it at once and open Winly Start instead"/>
                         <CheckBox x:Name="Autostart" Content="Start with Windows (current user only)"/>
+                        <TextBlock Text="Registers a sign-in task for your user in Task Scheduler, so the menu is ready before the desktop's delayed startup apps. Removed when you untick this or uninstall." Style="{StaticResource DlgCaption}"/>
                     </StackPanel>
                 </Border>
 

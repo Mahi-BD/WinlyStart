@@ -91,7 +91,10 @@ programs, files and websites you added, the menu size and list width, and every 
 ## How it replaces the Start menu — and why that is safe
 
 Winly Start never injects into `explorer.exe`, never patches files, never writes outside
-`HKCU`. It uses three ordinary, revertible user-mode mechanisms:
+`HKCU` — the one thing outside it is the optional **Start with Windows** sign-in task, registered
+for your user alone in Task Scheduler so the menu is up before the desktop's delayed startup apps,
+and removed when you turn it off or uninstall. It uses three ordinary, revertible user-mode
+mechanisms:
 
 * **Windows key / Ctrl+Esc** — a low-level keyboard hook. When you tap the Windows key,
   Winly Start lets the key through *and* sends a harmless masking key alongside it, so

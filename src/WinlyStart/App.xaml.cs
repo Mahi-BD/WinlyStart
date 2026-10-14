@@ -1,4 +1,7 @@
+using System.Diagnostics;
 using System.IO;
+using System.Security.Principal;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,6 +26,10 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // "WinlyStart.exe --autostart on|off": the installer's "Start when I sign in" switch. Runs before
+        // the single-instance check so it also works while the app is open.
+        if (e.Args is ["--autostart", var mode]) { Autostart.Apply(mode == "on"); Shutdown(); return; }
+
         _mutex = new Mutex(true, "WinlyStart.SingleInstance", out bool first);
         if (!first) { Shutdown(); return; }
 
@@ -52,7 +59,16 @@ public partial class App : Application
         _tray.LeftClick += () => _menu.ToggleMenu();
         _tray.RightClick += ShowTrayMenu;
 
-        Autostart.Apply(Settings.StartWithWindows);
+        // Any registration already present — the installer's "Start when I sign in", or an older
+        // build's Run value — counts as on, shows in the Settings checkbox, and becomes the logon task.
+        // Off the UI thread: it runs schtasks.exe.
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            bool on = Settings.StartWithWindows || Autostart.IsRegistered();
+            if (on && !Settings.StartWithWindows)
+                Dispatcher.BeginInvoke(() => { Settings.StartWithWindows = true; Store.SaveAsync("settings.json", Settings, JsonCtx.Default.Settings); });
+            Autostart.Apply(on);
+        });
         base.OnStartup(e);
     }
 
@@ -73,7 +89,7 @@ public partial class App : Application
         Normalize(Settings);
         Theme.Current.SetMode(Settings.Theme);
         app.ApplyHookSettings();
-        Autostart.Apply(Settings.StartWithWindows);
+        Autostart.ApplyAsync(Settings.StartWithWindows);
         app._menu?.ReloadLayout();      // flags tiles.json for reload before the rescan below completes
         Catalog.ReloadUserData();
         app._calendar?.Close();         // reopens from calendar.json next time
@@ -86,7 +102,7 @@ public partial class App : Application
         Store.Save("settings.json", Settings, JsonCtx.Default.Settings);
         Theme.Current.SetMode(Settings.Theme);
         app.ApplyHookSettings();
-        Autostart.Apply(Settings.StartWithWindows);
+        Autostart.ApplyAsync(Settings.StartWithWindows);
         app._menu?.ApplySettings();
     }
 
@@ -152,26 +168,78 @@ public partial class App : Application
     }
 }
 
-/// <summary>Per-user autostart via HKCU\…\Run — the only registry key Winly Start ever writes.</summary>
+/// <summary>Per-user "Start with Windows". An unpackaged build registers a Task Scheduler logon task
+/// for the current user: the scheduler starts it the moment the user signs in, ahead of Explorer's
+/// delayed Run/Startup items, so the Start button is ours from the first click. Builds before 1.5.6
+/// wrote an HKCU Run value instead; it is migrated away. A packaged (MSIX) build declares startup
+/// through the manifest's windows.startupTask extension and Windows owns the switch (a Run value
+/// written there lands in the package's private hive and never starts anything).</summary>
 internal static class Autostart
 {
-    private const string Key = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    public const string TaskName = "Winly Start";
+    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+
+    /// <summary>Any registration present: the logon task or the legacy Run value.</summary>
+    public static bool IsRegistered() => !Packaged.Is && (LegacyRunValue() || Schtasks($"/Query /TN \"{TaskName}\"") == 0);
+
+    public static void ApplyAsync(bool enabled) => ThreadPool.QueueUserWorkItem(_ => Apply(enabled));
 
     public static void Apply(bool enabled)
     {
-        // A packaged (MSIX) build declares startup through the windows.startupTask extension in its
-        // manifest, and Windows — not us — owns the on/off switch. Writing the Run key there is
-        // redirected into the package's private registry hive, so it would look like it worked and
-        // silently never start the app. Leave it alone.
         if (Packaged.Is) return;
-
         try
         {
-            using var k = Registry.CurrentUser.CreateSubKey(Key);
-            if (k == null) return;
-            if (enabled && Environment.ProcessPath is { } exe) k.SetValue("WinlyStart", $"\"{exe}\"");
-            else k.DeleteValue("WinlyStart", throwOnMissingValue: false);
+            if (enabled) Register(); else Schtasks($"/Delete /TN \"{TaskName}\" /F");
+            using var k = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            k?.DeleteValue("WinlyStart", throwOnMissingValue: false);
         }
         catch { }
+    }
+
+    private static bool LegacyRunValue()
+    {
+        try { using var k = Registry.CurrentUser.OpenSubKey(RunKey); return k?.GetValue("WinlyStart") != null; }
+        catch { return false; }
+    }
+
+    /// <summary>Registers (or re-registers, so the path follows an update) the logon task: this user
+    /// only, interactive token, least privilege, normal priority, no battery or time limit — the
+    /// scheduler's defaults would stop the app after 72 h and skip it on battery.</summary>
+    private static void Register()
+    {
+        if (Environment.ProcessPath is not { } exe) return;
+        using var id = WindowsIdentity.GetCurrent();
+        string xml = $"""
+            <?xml version="1.0" encoding="UTF-16"?>
+            <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+              <RegistrationInfo><Description>Starts Winly Start when you sign in. Turn it off in Winly Start's Settings.</Description></RegistrationInfo>
+              <Triggers><LogonTrigger><UserId>{Esc(id.Name)}</UserId></LogonTrigger></Triggers>
+              <Principals><Principal id="user"><UserId>{Esc(id.User?.Value ?? id.Name)}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+              <Settings>
+                <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                <Priority>5</Priority>
+              </Settings>
+              <Actions Context="user"><Exec><Command>"{Esc(exe)}"</Command><WorkingDirectory>{Esc(Path.GetDirectoryName(exe) ?? "")}</WorkingDirectory></Exec></Actions>
+            </Task>
+            """;
+        string file = Path.Combine(Path.GetTempPath(), "WinlyStart-logon-task.xml");
+        File.WriteAllText(file, xml, Encoding.Unicode);
+        try { Schtasks($"/Create /TN \"{TaskName}\" /XML \"{file}\" /F"); }
+        finally { try { File.Delete(file); } catch { } }
+    }
+
+    private static string Esc(string s) => System.Security.SecurityElement.Escape(s) ?? s;
+
+    private static int Schtasks(string args)
+    {
+        using var p = Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "schtasks.exe"), args)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        return p != null && p.WaitForExit(15_000) ? p.ExitCode : -1;
     }
 }

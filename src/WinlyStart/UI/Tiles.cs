@@ -108,7 +108,9 @@ public sealed class TileGroupVm : INotifyPropertyChanged
     public int Columns { get => _columns; set { _columns = value; Raise(nameof(PixelWidth)); } }
     public ObservableCollection<TileVm> Tiles { get; } = new();
     public double PixelWidth => Columns * TileVm.Pitch - TileVm.Gap;
-    public double PixelHeight => Math.Max(_rows, 2) * TileVm.Pitch - TileVm.Gap;
+    /// <summary>Whole medium-tile rows, like Windows 10: a group that ends on a half row (small tiles)
+    /// keeps the other half empty, so the next group starts on the medium grid.</summary>
+    public double PixelHeight => Math.Max(_rows + (_rows & 1), 2) * TileVm.Pitch - TileVm.Gap;
 
     /// <summary>Set when the user made this group by hand; it then survives while empty.</summary>
     public bool KeepEmpty { get; set; }

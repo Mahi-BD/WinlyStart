@@ -183,7 +183,7 @@ Repo/Instruction/read.md   this file
 ## Settings (`settings.json`)
 `ReplaceWinKey`, `ReplaceStartButton`, `SuppressWindowsMenu` ("Keep the Windows 11 Start menu
 closed" = the WinEvent fallback; off → the Windows menu is left alone whenever it appears),
-`StartWithWindows` (HKCU Run key), `Theme` (Auto/Light/Dark), `TileColumns` (4–12; 6/8 in the
+`StartWithWindows` (Task Scheduler logon task "Winly Start" since 1.5.6; the HKCU Run value older builds wrote is migrated away), `Theme` (Auto/Light/Dark), `TileColumns` (4–12; 6/8 in the
 Settings window, any value by dragging), `MenuHeight`, `ListWidth`, `ShowRecentlyAdded`,
 `ShowMostUsed`, `OpenAtCorner`, `TrimMemoryWhenHidden`, `Rail.*` (folders + `Calendar` +
 `QuickPower` = Sleep / Shut down / Hibernate buttons under the hamburger; Hibernate shows only when
@@ -503,6 +503,39 @@ in red: "when start icon is middle the menu should open rightly same as left and
   Settings caption updated to say so. **Verified live** on the VM (1280×800, centred taskbar): Start
   button `396,752 45×48`, menu `242,112 796×640` → centre x 640 = the screen's middle; screenshot
   checked. Not released (see below).
+- **Start with Windows = a Task Scheduler logon task** (user: "the application should (if start on
+  option) open in startup, first startup on the os. so make it as service that run on first"). A
+  Windows *service* cannot do this — session 0 has no desktop, no hooks, no tray — so the earliest
+  honest point is the user's sign-in, and the scheduler's logon trigger fires there, ahead of the
+  ~10 s delay Explorer applies to Run/Startup items. `Autostart` now registers the task "Winly Start"
+  through `schtasks.exe /Create /XML` (this user only, `InteractiveToken`, `LeastPrivilege`, priority 5
+  = normal, `ExecutionTimeLimit PT0S`, battery limits off — the scheduler's defaults would stop the app
+  after 72 h and skip it on battery; the task is not hidden). Standard users can register their own
+  logon task without elevation — probed on the VM at Medium integrity: create, run, delete all
+  succeeded. The exe also takes `--autostart on|off` (handled before the single-instance mutex) and
+  the installer's "Start when I sign in" task calls that instead of writing the Run value; the
+  uninstaller deletes the task and any old Run value. ⚠️ Bug found on the way: the installer's Run
+  value was deleted on the app's first launch, because `Apply(Settings.StartWithWindows)` ran with the
+  default `false` (VM: `/TASKS=startup` → Run value present → gone after the first run). Start-up now
+  treats any existing registration (task or Run value) as *on*, writes that into the setting, and
+  (re)registers the task on every launch so the path follows an update — all on a pool thread, since
+  it spawns schtasks. Starting before Explorer is safe: the hooks need no taskbar, `TrayIcon` re-adds
+  itself on `TaskbarCreated`, and the bars refresh on the first foreground change. Still HKCU-only in
+  the registry; the task lives in the scheduler's per-user store, which README now says.
+  **Verified on the VM:** `--autostart on` → task "Winly Start" (principal = the user's SID,
+  InteractiveToken, battery limits off, PT0S, priority 5, command = the installed exe), Run value gone;
+  `schtasks /Run` started the app in session 1 at Normal priority, settings.json flipped to
+  `StartWithWindows: true`, Win tap opened the menu with the foreground (3 of 4 taps — the very first
+  tap after the first task launch showed nothing and left no trace because logging was off; not
+  reproduced with `WINLYSTART_DEBUG=1`, watch for it). A real sign-in test needs a sign-out on the VM
+  (no autologon there) — left to the user.
+- **Groups end on whole medium rows** (user screenshot: Productivity = a row of small tiles over a row
+  of medium ones = 3 small rows, and Explore started right on the half row; "it should be move like the
+  height of small icon height (though there is no icon)"). `TileGroupVm.PixelHeight` now rounds the
+  packed row count up to an even number (`_rows + (_rows & 1)`), as Windows 10 does — the empty half
+  row stays part of the group (a small tile can be dropped there) and the next header sits on the
+  medium grid. Verified on the VM: Explore's header moved from right under the medium row to one
+  small pitch (52 px) lower.
 - **No GitHub release.** User rule from the same day: *"dont relese on github untill i say"* — build,
   test on the VM and commit (git + SVN) only; **never push a `v*` tag or create a release** until the
   user says so. Test deploys go over the LAN: `python3 -m http.server 8766` in `out/sc` on this box
