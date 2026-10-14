@@ -78,6 +78,7 @@ public partial class App : Application
         s.TileColumns = Math.Clamp(s.TileColumns == 0 ? 6 : s.TileColumns, 4, 12);
         s.MenuHeight = Math.Clamp(s.MenuHeight, 480, 1200);
         s.ListWidth = Math.Clamp(s.ListWidth == 0 ? 256 : s.ListWidth, Settings.MinListWidth, Settings.MaxListWidth);
+        s.GroupGap = Math.Clamp(s.GroupGap, Settings.MinGroupGap, Settings.MaxGroupGap);
     }
 
     /// <summary>After <see cref="Backup.Import"/>: re-read every data file and push it through the

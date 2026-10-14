@@ -44,6 +44,7 @@ public partial class StartMenuWindow : Window
     public StartMenuWindow()
     {
         InitializeComponent();
+        TileGroupVm.GapBelow = App.Settings.GroupGap;
         TileGroupsControl.ItemsSource = _groups;
 
         _hwnd = new WindowInteropHelper(this).EnsureHandle();
@@ -362,7 +363,8 @@ public partial class StartMenuWindow : Window
         Height = s.MenuHeight;
         ListCol.Width = new GridLength(s.ListWidth);
         Width = WidthForColumns(s.TileColumns);
-        foreach (var g in _groups) { g.Columns = s.TileColumns; g.Pack(); }
+        TileGroupVm.GapBelow = s.GroupGap;
+        foreach (var g in _groups) { g.Columns = s.TileColumns; g.Pack(); g.RefreshGap(); }
         BuildRail();
         // quick power buttons under the hamburger. Sleep is always offered, exactly like the power flyout
         // (IsPwrSuspendAllowed is false on VMs where Sleep still works for the user). Hibernate needs a

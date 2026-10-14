@@ -42,6 +42,7 @@ public partial class SettingsWindow : Window
         ColumnsBox.SelectedIndex = _loadedColsIndex = s.TileColumns == 8 ? 1 : s.TileColumns == 6 ? 0 : 2;
         HeightSlider.Value = s.MenuHeight;
         _loadedHeight = (int)HeightSlider.Value;     // after the slider's tick snapping
+        GapSlider.Value = s.GroupGap;
         AtCorner.IsChecked = s.OpenAtCorner;
         Recent.IsChecked = s.ShowRecentlyAdded;
         MostUsed.IsChecked = s.ShowMostUsed;
@@ -170,6 +171,7 @@ public partial class SettingsWindow : Window
         s.Theme = (ThemeMode)Math.Max(0, ThemeBox.SelectedIndex);
         if (ColumnsBox.SelectedIndex != _loadedColsIndex && ColumnsBox.SelectedIndex is 0 or 1) s.TileColumns = ColumnsBox.SelectedIndex == 1 ? 8 : 6;
         if ((int)HeightSlider.Value != _loadedHeight) s.MenuHeight = (int)HeightSlider.Value;
+        s.GroupGap = (int)GapSlider.Value;
         s.OpenAtCorner = AtCorner.IsChecked == true;
         s.ShowRecentlyAdded = Recent.IsChecked == true;
         s.ShowMostUsed = MostUsed.IsChecked == true;

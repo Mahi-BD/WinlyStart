@@ -109,8 +109,13 @@ public sealed class TileGroupVm : INotifyPropertyChanged
     public ObservableCollection<TileVm> Tiles { get; } = new();
     public double PixelWidth => Columns * TileVm.Pitch - TileVm.Gap;
     /// <summary>Exactly the rows in use (at least one medium row), so the gap to the next group is
-    /// always the same — the group template's bottom margin — whatever row the last tile ends on.</summary>
+    /// always the same — <see cref="BottomMargin"/> — whatever row the last tile ends on.</summary>
     public double PixelHeight => Math.Max(_rows, 2) * TileVm.Pitch - TileVm.Gap;
+
+    /// <summary>Space under every group (Settings › Group spacing); one value for the whole board.</summary>
+    public static int GapBelow { get; set; } = 24;
+    public System.Windows.Thickness BottomMargin => new(0, 0, 0, GapBelow);
+    public void RefreshGap() => Raise(nameof(BottomMargin));
 
     /// <summary>Set when the user made this group by hand; it then survives while empty.</summary>
     public bool KeepEmpty { get; set; }

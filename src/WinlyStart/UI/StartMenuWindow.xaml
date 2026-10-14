@@ -260,9 +260,9 @@
         </Style>
 
         <DataTemplate DataType="{x:Type ui:TileGroupVm}">
-            <!-- 24 px under the last tile row, then the 40 px header: a fixed 64 px between one group's
-                 tiles and the next, whatever row the last tile ends on (user: "a fixed gap"). -->
-            <StackPanel Margin="0,0,0,24">
+            <!-- Settings › Group spacing (24 px by default) under the last tile row, then the 40 px name row:
+                 the same distance between every group, whatever row the last tile ends on. -->
+            <StackPanel Margin="{Binding BottomMargin}">
                 <!-- Windows 10 group header. Normally plain text (not an edit field); click it to rename
                      and it becomes a real text box. Drag it to move the whole group. -->
                 <Grid Height="36" Margin="0,0,0,4" HorizontalAlignment="Left" MinWidth="220">

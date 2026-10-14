@@ -26,6 +26,10 @@ public sealed class Settings
     /// the tiles (shows on hover). 256 = Windows 10's 248 px list + scrollbar.</summary>
     public int ListWidth { get; set; } = 256;
     public const int MinListWidth = 176, MaxListWidth = 480;
+    /// <summary>Space in DIPs between a group's last tile row and the next group's name (the name row
+    /// itself is 40). Settings › Group spacing, 0–96; 24 by default.</summary>
+    public int GroupGap { get; set; } = 24;
+    public const int MinGroupGap = 0, MaxGroupGap = 96;
     public bool ShowRecentlyAdded { get; set; } = true;
     public bool ShowMostUsed { get; set; } = true;
     /// <summary>Force the menu to the screen corner instead of following the Start button.</summary>

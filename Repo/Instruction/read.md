@@ -185,7 +185,7 @@ Repo/Instruction/read.md   this file
 closed" = the WinEvent fallback; off → the Windows menu is left alone whenever it appears),
 `StartWithWindows` (Task Scheduler logon task "Winly Start" since 1.5.6; the HKCU Run value older builds wrote is migrated away), `Theme` (Auto/Light/Dark), `TileColumns` (4–12; 6/8 in the
 Settings window, any value by dragging), `MenuHeight`, `ListWidth`, `ShowRecentlyAdded`,
-`ShowMostUsed`, `OpenAtCorner`, `TrimMemoryWhenHidden`, `Rail.*` (folders + `Calendar` +
+`ShowMostUsed`, `OpenAtCorner`, `TrimMemoryWhenHidden`, `GroupGap` (0–96 px under each tile group, default 24; Settings › Group spacing), `Rail.*` (folders + `Calendar` +
 `QuickPower` = Sleep / Shut down / Hibernate buttons under the hamburger; Hibernate shows only when
 `IsPwrHibernateAllowed()`), `ProfileImagePath`.
 
@@ -541,6 +541,12 @@ in red: "when start icon is middle the menu should open rightly same as left and
   (The true Windows 10 rule — medium/wide/large tiles snap to even rows/columns, only small tiles use
   the fine grid, so a group's last big tile always ends on its bottom edge — was considered and *not*
   done: it would move the user's tiles, e.g. To Do at col 5 and Settings at row 1 on the VM.)
+  Then (same day, screenshot of the gap boxed in red): "make the gap size on the setting that i can
+  reduce or extend the gap size between two group" → `Settings.GroupGap` (0–96, default 24, clamped
+  in `Normalize`), a **Group spacing** slider in Settings › Appearance, `TileGroupVm.GapBelow`
+  (static) + `BottomMargin` bound by the group template's StackPanel, refreshed from
+  `StartMenuWindow.ApplySettings()` (`RefreshGap()` on every group) and seeded in the constructor.
+  Shipped as **1.5.8** (user: "make the version to 1.5.8 update github and published").
 - **Tile drag like Windows 10** (user screen recording, "find the icon dragging issue, it's [not]
   smooth like original Windows 10"). Frame-by-frame (ffmpeg strips, `scratchpad/vid`) showed three
   defects: (1) the dragged tile painted *under* the groups below it — its `Panel.ZIndex` only orders it

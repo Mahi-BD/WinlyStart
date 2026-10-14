@@ -84,6 +84,9 @@ iCalendar (`.ics`). The window is resizable and remembers its size.
 
 ![Settings](docs/screenshots/settings.png)
 
+Appearance covers the theme, the tile columns, the menu height, where the menu opens and the
+**spacing between tile groups** (a slider, 0–96 px).
+
 **Export…** writes everything to one file — the tile layout (groups, tile sizes and positions), the
 programs, files and websites you added, the menu size and list width, and every setting — and
 **Import…** restores it, on this PC or another one.

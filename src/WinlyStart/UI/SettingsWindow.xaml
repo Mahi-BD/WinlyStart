@@ -65,6 +65,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Text="Theme" VerticalAlignment="Center" Margin="0,6"/>
                             <ComboBox x:Name="ThemeBox" Grid.Column="1" Margin="0,6" HorizontalAlignment="Stretch">
@@ -82,6 +83,14 @@
                                 <TextBlock DockPanel.Dock="Right" Width="56" TextAlignment="Right" VerticalAlignment="Center"
                                            Text="{Binding ElementName=HeightSlider, Path=Value, StringFormat={}{0:0} px}"/>
                                 <Slider x:Name="HeightSlider" Minimum="480" Maximum="1000" TickFrequency="20" IsSnapToTickEnabled="True"
+                                        VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            </DockPanel>
+                            <TextBlock Grid.Row="3" Text="Group spacing" VerticalAlignment="Center" Margin="0,6"/>
+                            <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,6"
+                                       ToolTip="Space between one tile group and the next group's name">
+                                <TextBlock DockPanel.Dock="Right" Width="56" TextAlignment="Right" VerticalAlignment="Center"
+                                           Text="{Binding ElementName=GapSlider, Path=Value, StringFormat={}{0:0} px}"/>
+                                <Slider x:Name="GapSlider" Minimum="0" Maximum="96" TickFrequency="4" IsSnapToTickEnabled="True"
                                         VerticalAlignment="Center" Margin="0,0,12,0"/>
                             </DockPanel>
                         </Grid>
