@@ -564,6 +564,10 @@ in red: "when start icon is middle the menu should open rightly same as left and
   frames (header 250 → 280 → 312 px) instead of jumping. Layout restored afterwards from a backup.
   Note: the live preview is clamped to `LastContentRow`, so a group only grows at the drop, not while
   hovering below its content — unchanged, deliberate (see the 1.5.2 drop fix).
+- **Released as v1.5.7 on the user's go** ("release it on github", 2026-10-14): main `8bef0bf` + tag
+  pushed, CI run 38497400971 → https://github.com/Mahi-BD/WinlyStart/releases/tag/v1.5.7 with
+  `WinlyStart-Setup-1.5.7.exe` (49,678,396 B), `WinlyStart-1.5.7.msix`, the self-contained and the
+  framework-dependent zips. The rule below still stands for every *next* release.
 - **No GitHub release.** User rule from the same day: *"dont relese on github untill i say"* — build,
   test on the VM and commit (git + SVN) only; **never push a `v*` tag or create a release** until the
   user says so. Test deploys go over the LAN: `python3 -m http.server 8766` in `out/sc` on this box
