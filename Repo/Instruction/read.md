@@ -547,6 +547,20 @@ in red: "when start icon is middle the menu should open rightly same as left and
   `IncludeNativeLibrariesForSelfExtract` the WPF native DLLs stay *beside* the exe, a copied-alone exe
   starts, then dies in `HwndSubclass.HookWindowProc` with `DllNotFoundException` (Event Log: .NET Runtime
   1026 + Application Error 1000, exception 0xe0434352) — that cost one deploy round on 10-14.
+- **Installer built on the VM** (user: "reinstall", with no release allowed): Inno Setup 6.7.3 is
+  installed per-user on the VM at `%LocalAppData%\Programs\Inno Setup 6` (its own setup accepts
+  `/CURRENTUSER`; direct download `github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe`
+  — `jrsoftware.org/download.php/is.exe` returns an HTML page). `Repo/Temp/build-setup.ps1` pulls
+  `installer/WinlyStart.iss`, `LICENSE`, `README.md` and `src/WinlyStart/Assets/WinlyStart.ico` from a
+  `python3 -m http.server 8766` in a staging folder on this box (same relative layout as the repo),
+  takes the exe from `%TEMP%\WinlyStart-1.5.6.exe`, and compiles with the CI command line
+  (`/DAppVersion=1.5.6 /DSourceExe=..\out\sc\WinlyStart.exe`) into `%TEMP%\wsbuild\dist`.
+  `Repo/Temp/reinstall.ps1` then runs the old `unins000.exe /VERYSILENT`, the new setup
+  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=startup`, starts the app and prints exe version,
+  uninstall key, task, Run value and the setting. Result (10-14): 1.5.5 uninstalled (its uninstaller leaves the task, it
+  predates it) → 1.5.6 installed: uninstall key 1.5.6, task registered by the `[Run] --autostart on`
+  entry, no Run value, app runs, setting on. Second cycle with the **1.5.6 uninstaller: task deleted**
+  (`[UninstallRun]` works) → reinstalled → task back. The VM now runs this installer's 1.5.6.
 - Harness: `Repo/Temp/place.ps1` (via `npz.sh`) taps Win, prints the UIA Start-button rectangle and the
   menu window rectangle, screenshots the primary screen and PUTs it to a tiny receiver
   (`scratchpad/recv.py`, port 8767) on this box.
