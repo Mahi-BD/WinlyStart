@@ -530,13 +530,17 @@ in red: "when start icon is middle the menu should open rightly same as left and
   tap after the first task launch showed nothing and left no trace because logging was off; not
   reproduced with `WINLYSTART_DEBUG=1`, watch for it). A real sign-in test needs a sign-out on the VM
   (no autologon there) — left to the user.
-- **Groups end on whole medium rows** (user screenshot: Productivity = a row of small tiles over a row
-  of medium ones = 3 small rows, and Explore started right on the half row; "it should be move like the
-  height of small icon height (though there is no icon)"). `TileGroupVm.PixelHeight` now rounds the
-  packed row count up to an even number (`_rows + (_rows & 1)`), as Windows 10 does — the empty half
-  row stays part of the group (a small tile can be dropped there) and the next header sits on the
-  medium grid. Verified on the VM: Explore's header moved from right under the medium row to one
-  small pitch (52 px) lower.
+- **Gap between groups — superseded the same day.** First request (screenshot: Productivity = a row
+  of small tiles over a row of medium ones = 3 small rows, Explore right under it; "it should be move
+  like the height of small icon height (though there is no icon)") → `PixelHeight` rounded the row
+  count up to whole medium rows like Windows 10. Second screenshot (Settings tile ending on row 3 of a
+  4-row group, 64 px of nothing under it): "some time there is very gap between two group … make it a
+  fixed gap between two group". So: **no rounding** — `PixelHeight` is exactly the rows in use (min 2),
+  and the group template's bottom margin went 12 → 24 px, giving a constant 64 px (24 + 40 px header)
+  from a group's last tile row to the next group's first row, whatever row the last tile ends on.
+  (The true Windows 10 rule — medium/wide/large tiles snap to even rows/columns, only small tiles use
+  the fine grid, so a group's last big tile always ends on its bottom edge — was considered and *not*
+  done: it would move the user's tiles, e.g. To Do at col 5 and Settings at row 1 on the VM.)
 - **Tile drag like Windows 10** (user screen recording, "find the icon dragging issue, it's [not]
   smooth like original Windows 10"). Frame-by-frame (ffmpeg strips, `scratchpad/vid`) showed three
   defects: (1) the dragged tile painted *under* the groups below it — its `Panel.ZIndex` only orders it
