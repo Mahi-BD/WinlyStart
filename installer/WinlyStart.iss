@@ -11,7 +11,7 @@
 #define AppURL         "https://github.com/Mahi-BD/WinlyStart"
 
 #ifndef AppVersion
-  #define AppVersion "1.5.6"
+  #define AppVersion "1.5.7"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\out\sc\WinlyStart.exe"

@@ -30,7 +30,7 @@
   <Identity
     Name="RampsBD.WinlyStart"
     Publisher="CN=WinlyStartDev"
-    Version="1.5.6.0"
+    Version="1.5.7.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

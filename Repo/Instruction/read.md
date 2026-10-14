@@ -485,7 +485,8 @@ not secondary monitor"):
   `-EncodedCommand` of a 3.9 KB script was "The command line is too long"); `nup.sh` (connector
   `/upload`) hung for both agents — uploads are not reliable on those agents, use `npz.sh`.
 
-Thirteenth round — v1.5.6 (2026-10-14, user screenshot of the Win11 VM with the Start button boxed
+Thirteenth round — v1.5.6, shipped as **1.5.7** (2026-10-14; user: "upper the version 1.5.7" after the
+tile-drag work, so every change below is in 1.5.7 — user screenshot of the Win11 VM with the Start button boxed
 in red: "when start icon is middle the menu should open rightly same as left and right or top menu"):
 - **Menu placement on a centred taskbar.** Since 1.4.0 `Position()` centred the menu on the Start
   *button*. On a centred Windows 11 taskbar the button is not at the screen's middle (Windows centres
