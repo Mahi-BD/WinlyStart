@@ -232,7 +232,8 @@ public partial class StartMenuWindow : Window
                 AnimatedPack(t.Group);
             }
         }
-        _dragBorder = null; _dragTile = null; _dragHost = null; _dragging = false;
+        if (_dragGroupContainer != null) Panel.SetZIndex(_dragGroupContainer, 0);
+        _dragBorder = null; _dragTile = null; _dragHost = null; _dragGroupContainer = null; _dragging = false;
         _headerPress = null; _headerDragging = false;
         GroupInsertLine.Visibility = Visibility.Collapsed;
         Mouse.Capture(null);
@@ -682,6 +683,7 @@ public partial class StartMenuWindow : Window
     // ───────────────────────── tile drag (smooth, Windows 10 style) ─────────────────────────
 
     private ItemsControl? _dragHost;          // canvas of the group the drag started in
+    private UIElement? _dragGroupContainer;   // the group's item container, lifted above the other groups
     private double _dragBaseX, _dragBaseY;    // the tile's layout position when the drag began
     private int _dragOrigCol, _dragOrigRow;   // the tile's cell when the drag began
     // Group rectangles captured when the drag starts. Hit-testing against live rectangles is not
@@ -716,6 +718,10 @@ public partial class StartMenuWindow : Window
             _dragOrigCol = t.Col; _dragOrigRow = t.Row;
             CaptureGroupRects();
             Scale(_dragBorder).ScaleX = Scale(_dragBorder).ScaleY = 1.05;   // lift
+            // The tile's ZIndex only orders it within its own group's canvas; the groups below are later
+            // siblings and would paint over it. Lift the whole group for the drag.
+            _dragGroupContainer = TileGroupsControl.ItemContainerGenerator.ContainerFromItem(t.Group) as UIElement;
+            if (_dragGroupContainer != null) Panel.SetZIndex(_dragGroupContainer, 1000);
         }
 
         // Live preview, but ONLY while the pointer is over the source group. Previewing outside it used
@@ -759,13 +765,36 @@ public partial class StartMenuWindow : Window
         if (!_dragging) { tt.X = 0; tt.Y = 0; LaunchApp(t.App); return; }
         _dragging = false;
         t.IsDragging = false;
-        DropTile(t, e.GetPosition(this));
-
-        // ease from under the pointer into the cell instead of snapping
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        tt.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(tt.X, 0, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
-        tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(tt.Y, 0, TimeSpan.FromMilliseconds(170)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
+        // Where the tile is on screen right now; after the drop it eases from there into its cell —
+        // whichever container shows it then (the same one, another group's, or a new group's).
+        var from = b.TranslatePoint(new Point(0, 0), this);
         tt.X = 0; tt.Y = 0;
+        if (_dragGroupContainer != null) Panel.SetZIndex(_dragGroupContainer, 0);
+        _dragGroupContainer = null;
+        DropTile(t, e.GetPosition(this));
+        GlideInto(t, from);
+    }
+
+    /// <summary>Windows 10 drop: the tile glides from under the pointer into its cell instead of
+    /// snapping. Measured after the layout has caught up, so a tile that changed group (new visual)
+    /// or landed in a group that just moved still starts exactly where it was released.</summary>
+    private void GlideInto(TileVm t, Point from)
+    {
+        UpdateLayout();
+        if (HostOf(t.Group)?.ItemContainerGenerator.ContainerFromItem(t) is not ContentPresenter cp
+            || FindChild<Border>(cp) is not { } nb) return;
+        var to = cp.TranslatePoint(new Point(0, 0), this);
+        double dx = from.X - to.X, dy = from.Y - to.Y;
+        if (Math.Abs(dx) < 0.5 && Math.Abs(dy) < 0.5) return;
+        var container = TileGroupsControl.ItemContainerGenerator.ContainerFromItem(t.Group) as UIElement;
+        if (container != null) Panel.SetZIndex(container, 1000);   // glide above the groups it crosses
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var ax = new DoubleAnimation(dx, 0, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        var ay = new DoubleAnimation(dy, 0, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
+        if (container != null) ay.Completed += (_, _) => { if (_dragGroupContainer != container) Panel.SetZIndex(container, 0); };
+        var tt = Translate(nb);
+        tt.BeginAnimation(TranslateTransform.XProperty, ax);
+        tt.BeginAnimation(TranslateTransform.YProperty, ay);
     }
 
     private void DropTile(TileVm tile, Point pointer)
@@ -840,6 +869,7 @@ public partial class StartMenuWindow : Window
     private void AnimatedPack(TileGroupVm g, TileVm? priority = null, TileVm? exclude = null)
     {
         var host = HostOf(g);
+        double oldHeight = host?.ActualHeight ?? 0;
         var before = new Dictionary<TileVm, (double x, double y)>();
         if (host != null)
             foreach (var t in g.Tiles)
@@ -848,6 +878,9 @@ public partial class StartMenuWindow : Window
         g.Pack(priority);
         if (host == null) return;
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        // A group that grew or shrank slides the groups below it instead of shoving them.
+        if (oldHeight > 0 && Math.Abs(oldHeight - g.PixelHeight) > 0.5)
+            host.BeginAnimation(FrameworkElement.HeightProperty, new DoubleAnimation(oldHeight, g.PixelHeight, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease, FillBehavior = FillBehavior.Stop });
         foreach (var t in g.Tiles)
         {
             if (t == exclude || !before.TryGetValue(t, out var old)) continue;
@@ -870,7 +903,7 @@ public partial class StartMenuWindow : Window
         tile.Row = 0;
         group.Tiles.Add(tile);
         group.Pack();
-        source.Pack();
+        AnimatedPack(source);
         RemoveEmptyGroups();
         SaveTiles();
     }

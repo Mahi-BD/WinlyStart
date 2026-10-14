@@ -536,6 +536,29 @@ in red: "when start icon is middle the menu should open rightly same as left and
   row stays part of the group (a small tile can be dropped there) and the next header sits on the
   medium grid. Verified on the VM: Explore's header moved from right under the medium row to one
   small pitch (52 px) lower.
+- **Tile drag like Windows 10** (user screen recording, "find the icon dragging issue, it's [not]
+  smooth like original Windows 10"). Frame-by-frame (ffmpeg strips, `scratchpad/vid`) showed three
+  defects: (1) the dragged tile painted *under* the groups below it — its `Panel.ZIndex` only orders it
+  inside its own group's canvas, and later sibling groups paint over that canvas; the header text
+  "Productivity" and its small tiles were drawn over the translucent tile. (2) No glide on drop: the
+  tile snapped into its cell in one frame. The old code animated the translate from an offset computed
+  for the *old* cell, so the jump equalled the cell change, and a tile that changed group got a brand-new
+  visual that nothing animated. (3) When the preview row changed the source group's height, every group
+  below jumped instantly. Fixes in `StartMenuWindow.xaml.cs`: the dragged tile's group container gets
+  `Panel.ZIndex 1000` for the drag (`_dragGroupContainer`, reset on drop/cancel); `Tile_MouseUp`
+  measures the tile's on-screen point, drops, then `GlideInto()` runs `UpdateLayout()`, finds the
+  container that shows the tile now, and eases its translate from (from − to) to 0 over 200 ms, lifting
+  that group while it crosses others; `AnimatedPack()` animates the group canvas `Height` from the old
+  to the new value (220 ms, the binding supplies the base value after `FillBehavior.Stop`), so the groups
+  below slide; `StartNewGroupWith` shrinks the source with `AnimatedPack`. Scripted drag on the VM
+  (`Repo/Temp/dragtest.ps1`: mouse_event press/move/release with screenshots mid-drag and ~40 ms apart
+  after release) checks z-order and the glide. **Verified on the VM** (two scripted drags, screenshots ~40 ms
+  apart): the Clock tile dragged from Explore over Productivity paints *above* Productivity's tiles;
+  after release it is caught mid-glide between the pointer and its cell while Calculator slides aside;
+  To Do dropped two rows lower in Explore grows the group and Productivity slides down over several
+  frames (header 250 → 280 → 312 px) instead of jumping. Layout restored afterwards from a backup.
+  Note: the live preview is clamped to `LastContentRow`, so a group only grows at the drop, not while
+  hovering below its content — unchanged, deliberate (see the 1.5.2 drop fix).
 - **No GitHub release.** User rule from the same day: *"dont relese on github untill i say"* — build,
   test on the VM and commit (git + SVN) only; **never push a `v*` tag or create a release** until the
   user says so. Test deploys go over the LAN: `python3 -m http.server 8766` in `out/sc` on this box
